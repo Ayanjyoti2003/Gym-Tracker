@@ -2,7 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@rea
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -13,13 +13,46 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
+import * as SplashScreen from 'expo-splash-screen';
+
+// Prevent the splash screen from auto-hiding before asset loading is complete.
+SplashScreen.preventAutoHideAsync();
+
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  
+  // State to hold minimum delay before hiding the LoadingScreen
+  const [isReady, setIsReady] = useState(false);
+  // Track if we've successfully hidden the native splash screen
+  const [splashHidden, setSplashHidden] = useState(false);
 
   useEffect(() => {
-    if (loading) return;
+    // Hide the native splash screen safely
+    const hideSplash = async () => {
+      try {
+        await SplashScreen.hideAsync();
+        setSplashHidden(true);
+      } catch (error) {
+        setSplashHidden(true);
+      }
+    };
+    
+    // Slight timeout ensures React has actually painted the LoadingScreen below
+    setTimeout(hideSplash, 100);
+    
+    // Enforce a minimum display time for the premium LoadingScreen
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 4500); // 4.5 seconds delay to allow reading the quote
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    // Wait for both the auth resolution AND our minimum delay to finish
+    if (loading || !isReady) return;
 
     const inAuthGroup = segments[0] === 'login';
 
@@ -30,9 +63,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       // Redirect to tabs if user is authenticated and tries to access login page
       router.replace('/(tabs)');
     }
-  }, [user, loading, segments, router]);
+  }, [user, loading, isReady, segments, router]);
 
-  if (loading) {
+  if (loading || !isReady) {
+    // Our custom premium Loading Screen animation
     return <LoadingScreen />;
   }
 
