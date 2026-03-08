@@ -1,98 +1,185 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, SafeAreaView } from 'react-native';
+import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
+import { dualStorage } from '@/lib/storage';
+import { getWorkoutInsights } from '@/lib/genai';
+import { useFocusEffect } from 'expo-router';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+export default function DashboardScreen() {
+  const { user, signOut } = useAuth();
+  const { colors, accentColor } = useTheme();
+  
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [insightText, setInsightText] = useState('');
+  const [canGenerate, setCanGenerate] = useState(false);
 
-export default function HomeScreen() {
+  useFocusEffect(
+    useCallback(() => {
+      checkDataAvailability();
+    }, [user])
+  );
+
+  const checkDataAvailability = async () => {
+    if (!user) return;
+    const allWorkouts = await dualStorage.getAllLocal('workouts');
+    // Enable generation button if they have at least 1 workout
+    if (allWorkouts.length > 0) {
+      setCanGenerate(true);
+    }
+  };
+
+  const generateAIInsights = async () => {
+    if (!user) return;
+    setLoadingInsights(true);
+    
+    const profileData = await dualStorage.getItem('data', 'profile', user.uid);
+    const allWorkouts = await dualStorage.getAllLocal('workouts');
+    
+    // Sort descending and get last 5
+    allWorkouts.sort((a, b) => b.timestamp - a.timestamp);
+    const recentLogs = allWorkouts.slice(0, 5);
+
+    const generatedText = await getWorkoutInsights(profileData, recentLogs);
+    setInsightText(generatedText || 'No insights could be generated.');
+    setLoadingInsights(false);
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ padding: 20 }}>
+        <View style={styles.headerRow}>
+        <View>
+          <Text style={[styles.title, { color: colors.text }]}>Welcome, {user?.displayName ? user.displayName.split(' ')[0] : 'Athlete'}</Text>
+          <Text style={[styles.subtitle, { color: colors.textMuted }]}>Ready to crush your goals today?</Text>
+        </View>
+      </View>
+      
+      {/* Gen AI Insights */}
+      <View style={[styles.aiCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: accentColor }]}>
+        <View style={styles.aiHeader}>
+          <MaterialCommunityIcons name="robot-outline" size={24} color={accentColor} />
+          <Text style={[styles.aiTitle, { color: colors.text }]}>AI Insights ✨</Text>
+        </View>
+        
+        {insightText ? (
+          <Text style={[styles.aiText, { color: colors.text }]}>{insightText}</Text>
+        ) : (
+          <Text style={[styles.aiText, { color: colors.textMuted }]}>
+            {canGenerate 
+              ? "You've logged workouts! Tap below to analyze them and estimate your calories burned."
+              : "Log a workout in the Library to get personalized AI suggestions and calorie estimates!"}
+          </Text>
+        )}
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        {canGenerate && !insightText && (
+          <TouchableOpacity 
+            style={[styles.generateBtn, { backgroundColor: accentColor }]} 
+            onPress={generateAIInsights}
+            disabled={loadingInsights}
+          >
+            {loadingInsights ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <Text style={styles.generateBtnText}>Generate Insights</Text>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <View style={[styles.infoBox, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
+        <MaterialCommunityIcons name="cloud-sync-outline" size={32} color={colors.textMuted} />
+        <Text style={[styles.infoTitle, { color: colors.text }]}>Dual Storage Active</Text>
+        <Text style={[styles.infoDesc, { color: colors.textMuted }]}>Your workouts are saved instantly to your phone and backed up securely to your Google Account when online.</Text>
+      </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 30,
+    marginTop: 40,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#aaaaaa',
+  },
+  aiCard: {
+    backgroundColor: '#1e1e1e',
+    padding: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#333333',
+    marginBottom: 30,
+    shadowColor: '#ff4757',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  aiHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    marginBottom: 12,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  aiTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginLeft: 8,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  aiText: {
+    fontSize: 15,
+    color: '#dddddd',
+    lineHeight: 24,
   },
+  generateBtn: {
+    backgroundColor: '#ff4757',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  generateBtnText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  infoBox: {
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#151515',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#222222',
+    borderStyle: 'dashed',
+  },
+  infoTitle: {
+    color: '#dddddd',
+    fontWeight: '600',
+    marginTop: 12,
+    marginBottom: 6,
+    fontSize: 16,
+  },
+  infoDesc: {
+    color: '#777777',
+    textAlign: 'center',
+    lineHeight: 20,
+  }
 });
