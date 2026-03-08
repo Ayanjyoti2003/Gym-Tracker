@@ -1,6 +1,7 @@
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { Redirect } from 'expo-router';
+import LoadingScreen from '@/components/LoadingScreen';
 
 export default function LoginScreen() {
   const { user, loading, signInWithGoogle } = useAuth();
@@ -11,11 +12,7 @@ export default function LoginScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#ffffff" />
-      </View>
-    );
+    return <LoadingScreen />;
   }
 
   return (

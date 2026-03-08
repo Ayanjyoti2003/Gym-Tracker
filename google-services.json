@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "283664965101-d8p8g3vqnlku46r2g13ctgcn28m2hban.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ayanb.gymtracker",
+            "certificate_hash": "00564c5c1e38ebc77d19105f45d7bd17217fe60f"
+          }
+        },
+        {
           "client_id": "283664965101-u3fdbudjebp1tllcimlqrt8r19e1ae58.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
-import { View, ActivityIndicator } from 'react-native';
+import LoadingScreen from '@/components/LoadingScreen';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -33,11 +33,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [user, loading, segments, router]);
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#121212' }}>
-        <ActivityIndicator size="large" color="#ffffff" />
-      </View>
-    );
+    return <LoadingScreen />;
   }
 
   return <>{children}</>;
