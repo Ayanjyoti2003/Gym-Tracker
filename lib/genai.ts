@@ -77,3 +77,65 @@ export const chatWithGemini = async (message: string, context: { profile: any, r
     return "Whoops! I'm having trouble connecting to my servers right now. Are you offline or is your API key missing?";
   }
 };
+
+export const generateCustomRoutine = async (profileData: any, recentLogs: any[]) => {
+  try {
+    const prompt = `
+      You are an elite AI Personal Trainer. Based on the user's profile and their workout history, create a highly personalized 1-day custom workout routine.
+      
+      User Profile:
+      - Name: ${profileData?.name || 'User'}
+      - Height: ${profileData?.height || 'Unknown'} cm
+      - Weight: ${profileData?.weight || 'Unknown'} kg
+      - Goals: ${profileData?.goals || 'General fitness'}
+      - Gym Experience: ${profileData?.experienceValue ? profileData.experienceValue + ' ' + (profileData.experienceUnit || 'months') : 'Beginner / Newbie'}
+      - Recent Break/Gap: ${profileData?.gapValue && profileData?.gapUnit !== 'none' ? profileData.gapValue + ' ' + profileData.gapUnit : 'None'}
+
+      Recent Workout Logs (Historical Data):
+      ${JSON.stringify(recentLogs, null, 2)}
+      
+      INSTRUCTIONS:
+      1. Carefully assess their Gym Experience and their Recent Break/Gap.
+      2. If they are a beginner or have a significant recent break, ALWAYS suggest a newbie-friendly, lower-intensity routine to help them (re)start safely.
+      3. Explicitly suggest specific starting weights (e.g., "10 kg", "Bodyweight", "Adjust based on feel, maybe 5 kg dumbbells") for EACH exercise. Use their past workout history to inform this if available. Otherwise, use your assessment of their experience and gap to estimate a safe starting point.
+      4. Briefly explain why this routine was chosen overall, and provide a clear reason and benefit for EACH specific exercise.
+      
+      You MUST respond ONLY with a valid, clean JSON object matching exactly this schema, with NO markdown formatting:
+      {
+        "routineName": "Name of the routine",
+        "description": "Why this routine was suggested for them today based on their gaps/experience",
+        "exercises": [
+          {
+            "name": "Exercise Name",
+            "sets": "3",
+            "reps": "10-12",
+            "weightSuggestion": "Suggested weight/resistance",
+            "reason": "Why this specific exercise?",
+            "benefit": "What does it do?"
+          }
+        ]
+      }
+    `;
+
+    // We explicitly tell Gemini to return JSON
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json'
+      }
+    });
+
+    const responseText = response.text || "{}";
+    
+    try {
+      return JSON.parse(responseText);
+    } catch (parseError) {
+      console.error("Failed to parse GenAI JSON:", responseText);
+      return null;
+    }
+  } catch (error) {
+    console.error('Gen AI Routine Generation Error:', error);
+    return null;
+  }
+};

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { dualStorage } from '@/lib/storage';
-import { getWorkoutInsights } from '@/lib/genai';
+import { getWorkoutInsights, generateCustomRoutine } from '@/lib/genai';
 import { useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -14,6 +14,9 @@ export default function DashboardScreen() {
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [insightText, setInsightText] = useState('');
   const [canGenerate, setCanGenerate] = useState(false);
+  
+  const [generatingRoutine, setGeneratingRoutine] = useState(false);
+  const [customRoutine, setCustomRoutine] = useState<any>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -24,9 +27,15 @@ export default function DashboardScreen() {
   const checkDataAvailability = async () => {
     if (!user) return;
     const allWorkouts = await dualStorage.getAllLocal('workouts');
-    // Enable generation button if they have at least 1 workout
+    // Enable insight generation button if they have at least 1 workout
     if (allWorkouts.length > 0) {
       setCanGenerate(true);
+    }
+    
+    // Load existing custom routine if available
+    const routineData = await dualStorage.getItem('data', 'custom_routine', user.uid);
+    if (routineData) {
+      setCustomRoutine(routineData);
     }
   };
 
@@ -44,6 +53,25 @@ export default function DashboardScreen() {
     const generatedText = await getWorkoutInsights(profileData, recentLogs);
     setInsightText(generatedText || 'No insights could be generated.');
     setLoadingInsights(false);
+  };
+
+  const handleGenerateRoutine = async () => {
+    if (!user) return;
+    setGeneratingRoutine(true);
+    
+    const profileData = await dualStorage.getItem('data', 'profile', user.uid);
+    const allWorkouts = await dualStorage.getAllLocal('workouts');
+    allWorkouts.sort((a: any, b: any) => b.timestamp - a.timestamp);
+    const recentLogs = allWorkouts.slice(0, 5);
+    
+    const generatedRoutine = await generateCustomRoutine(profileData, recentLogs);
+    if (generatedRoutine) {
+      setCustomRoutine(generatedRoutine);
+      // Save it locally/cloud so it persists
+      await dualStorage.setItem('data', 'custom_routine', generatedRoutine, user.uid);
+    }
+    
+    setGeneratingRoutine(false);
   };
 
   return (
@@ -85,6 +113,65 @@ export default function DashboardScreen() {
               <Text style={styles.generateBtnText}>Generate Insights</Text>
             )}
           </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Custom Routine Card */}
+      <View style={[styles.aiCard, { backgroundColor: colors.card, borderColor: accentColor + '80' }]}>
+        <View style={styles.aiHeader}>
+          <MaterialCommunityIcons name="lightning-bolt" size={24} color={accentColor} />
+          <Text style={[styles.aiTitle, { color: colors.text }]}>Your Custom Routine 🔥</Text>
+        </View>
+
+        {!customRoutine ? (
+          <View>
+            <Text style={[styles.aiText, { color: colors.textMuted }]}>
+              Get a highly personalized 1-day workout routine tailored to your goals, experience, and past performance.
+            </Text>
+            <TouchableOpacity 
+              style={[styles.generateBtn, { backgroundColor: accentColor }]} 
+              onPress={handleGenerateRoutine}
+              disabled={generatingRoutine}
+            >
+              {generatingRoutine ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.generateBtnText}>Generate My Routine</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View>
+            <Text style={[styles.routineTitle, { color: colors.text }]}>{customRoutine.routineName}</Text>
+            <Text style={[styles.routineDesc, { color: colors.textMuted }]}>{customRoutine.description}</Text>
+            
+            {customRoutine.exercises?.map((ex: any, idx: number) => (
+              <View key={idx} style={[styles.exerciseBlock, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
+                <View style={styles.exerciseHeader}>
+                  <Text style={[styles.exerciseName, { color: colors.text }]}>{idx + 1}. {ex.name}</Text>
+                  <View style={[styles.badge, { backgroundColor: accentColor + '20' }]}>
+                    <Text style={[styles.badgeText, { color: accentColor }]}>{ex.sets}x{ex.reps}</Text>
+                  </View>
+                </View>
+                <Text style={[styles.exerciseWeight, { color: colors.text }]}>Starting Weight: {ex.weightSuggestion}</Text>
+                
+                <Text style={[styles.exerciseDetail, { color: colors.textMuted, marginTop: 8 }]}><Text style={{fontWeight: 'bold'}}>Reason:</Text> {ex.reason}</Text>
+                <Text style={[styles.exerciseDetail, { color: colors.textMuted }]}><Text style={{fontWeight: 'bold'}}>Benefit:</Text> {ex.benefit}</Text>
+              </View>
+            ))}
+
+            <TouchableOpacity 
+              style={[styles.regenerateBtn, { borderColor: colors.border }]} 
+              onPress={handleGenerateRoutine}
+              disabled={generatingRoutine}
+            >
+              {generatingRoutine ? (
+                <ActivityIndicator color={colors.text} size="small" />
+              ) : (
+                <Text style={[styles.regenerateBtnText, { color: colors.text }]}>Regenerate Routine</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -181,5 +268,64 @@ const styles = StyleSheet.create({
     color: '#777777',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  routineTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  routineDesc: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  exerciseBlock: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  exerciseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  exerciseName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginLeft: 10,
+  },
+  badgeText: {
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  exerciseWeight: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  exerciseDetail: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  regenerateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 16,
+  },
+  regenerateBtnText: {
+    fontWeight: 'bold',
+    fontSize: 16,
   }
 });

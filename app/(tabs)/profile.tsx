@@ -29,6 +29,13 @@ export default function ProfileScreen() {
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
   const [goals, setGoals] = useState('');
+  
+  const [experienceValue, setExperienceValue] = useState('');
+  const [experienceUnit, setExperienceUnit] = useState('months');
+  
+  const [gapValue, setGapValue] = useState('');
+  const [gapUnit, setGapUnit] = useState('none');
+  
   const [avatar, setAvatar] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,6 +51,10 @@ export default function ProfileScreen() {
       setHeight(profileData.height || '');
       setWeight(profileData.weight || '');
       setGoals(profileData.goals || '');
+      setExperienceValue(profileData.experienceValue || '');
+      setExperienceUnit(profileData.experienceUnit || 'months');
+      setGapValue(profileData.gapValue || '');
+      setGapUnit(profileData.gapUnit || 'none');
       setAvatar(profileData.avatar || DEFAULT_AVATARS[0]);
     } else {
       setAvatar(DEFAULT_AVATARS[0]);
@@ -61,6 +72,10 @@ export default function ProfileScreen() {
         height,
         weight,
         goals,
+        experienceValue,
+        experienceUnit,
+        gapValue,
+        gapUnit,
         avatar,
       }, user.uid);
       setIsEditing(false); // Close edit mode after saving
@@ -199,6 +214,59 @@ export default function ProfileScreen() {
               />
             </View>
 
+            {/* Experience Group */}
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.textMuted }]}>Gym Experience</Text>
+              <View style={styles.row}>
+                <TextInput 
+                  style={[styles.input, { flex: 1, marginRight: 10, backgroundColor: colors.cardElevated, color: colors.text, borderColor: colors.border }]} 
+                  placeholder="e.g. 6" 
+                  placeholderTextColor={colors.textMuted} 
+                  keyboardType="numeric" 
+                  value={experienceValue}
+                  onChangeText={setExperienceValue}
+                />
+                <View style={[styles.pickerContainer, { flex: 1, marginLeft: 10, borderColor: colors.border, backgroundColor: colors.cardElevated }]}>
+                  {['weeks', 'months', 'years'].map(unit => (
+                    <TouchableOpacity 
+                      key={unit} 
+                      style={[styles.pickerBtn, experienceUnit === unit && { backgroundColor: accentColor }]}
+                      onPress={() => setExperienceUnit(unit)}
+                    >
+                      <Text style={[styles.pickerBtnText, { color: experienceUnit === unit ? '#fff' : colors.textMuted }]}>{unit}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+
+            {/* Break / Gap Group */}
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.textMuted }]}>Recent Gym Break / Gap (if any)</Text>
+              <View style={styles.row}>
+                <TextInput 
+                  style={[styles.input, { flex: 1, marginRight: 10, backgroundColor: colors.cardElevated, color: colors.text, borderColor: gapUnit !== 'none' ? colors.border : '#333' }]} 
+                  placeholder={gapUnit === 'none' ? "None" : "e.g. 2"} 
+                  placeholderTextColor={colors.textMuted} 
+                  keyboardType="numeric" 
+                  value={gapUnit === 'none' ? '' : gapValue}
+                  onChangeText={setGapValue}
+                  editable={gapUnit !== 'none'}
+                />
+                <View style={[styles.pickerContainer, { flex: 1.5, marginLeft: 10, borderColor: colors.border, backgroundColor: colors.cardElevated }]}>
+                  {['none', 'weeks', 'months'].map(unit => (
+                    <TouchableOpacity 
+                      key={unit} 
+                      style={[styles.pickerBtn, gapUnit === unit && { backgroundColor: accentColor }]}
+                      onPress={() => setGapUnit(unit)}
+                    >
+                      <Text style={[styles.pickerBtnText, { color: gapUnit === unit ? '#fff' : colors.textMuted }]}>{unit}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+
             <TouchableOpacity 
               style={[styles.saveButton, { backgroundColor: accentColor, shadowColor: accentColor }, saving && { opacity: 0.7 }]} 
               onPress={handleSave}
@@ -232,6 +300,17 @@ export default function ProfileScreen() {
             <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Primary Goal</Text>
               <Text style={[styles.infoValue, { color: colors.text }]}>{goals || 'Not set'}</Text>
+            </View>
+
+            <View style={styles.row}>
+              <View style={[styles.infoCard, { flex: 1, marginRight: 10, backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Experience</Text>
+                <Text style={[styles.infoValue, { color: colors.text }]}>{experienceValue ? `${experienceValue} ${experienceUnit}` : 'Newbie'}</Text>
+              </View>
+              <View style={[styles.infoCard, { flex: 1, marginLeft: 10, backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Recent Gap</Text>
+                <Text style={[styles.infoValue, { color: colors.text }]}>{(gapValue && gapUnit !== 'none') ? `${gapValue} ${gapUnit}` : 'None'}</Text>
+              </View>
             </View>
           </View>
         )}
@@ -416,5 +495,22 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  pickerContainer: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  pickerBtn: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  pickerBtnText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    textTransform: 'capitalize',
   }
 });
