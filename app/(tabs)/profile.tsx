@@ -5,6 +5,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { dualStorage } from '@/lib/storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams } from 'expo-router';
 
 const DEFAULT_AVATARS = [
   'https://api.dicebear.com/7.x/avataaars/png?seed=Felix&backgroundColor=ff4757',
@@ -16,6 +17,9 @@ const DEFAULT_AVATARS = [
 export default function ProfileScreen() {
   const { user } = useAuth();
   const { colors, accentColor } = useTheme();
+  
+  const { newSignIn } = useLocalSearchParams();
+  const isNewUser = newSignIn === 'true';
   
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -95,6 +99,15 @@ export default function ProfileScreen() {
     >
       <ScrollView keyboardShouldPersistTaps="handled">
         
+        {isNewUser && (
+          <View style={[styles.welcomeBubble, { backgroundColor: colors.cardElevated, borderColor: accentColor }]}>
+            <MaterialCommunityIcons name="star-shooting" size={24} color={accentColor} style={styles.welcomeIcon} />
+            <Text style={[styles.welcomeText, { color: colors.text }]}>
+              Welcome! Please complete your profile details below to get the best personalized workout experience.
+            </Text>
+          </View>
+        )}
+
         {/* Header with Edit Toggle */}
         <View style={styles.headerRow}>
           <View>
@@ -233,6 +246,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#121212',
     padding: 20,
+  },
+  welcomeBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 40,
+    marginBottom: -20, // Negative margin to pull header closer
+    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  welcomeIcon: {
+    marginRight: 12,
+  },
+  welcomeText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
   },
   headerRow: {
     flexDirection: 'row',

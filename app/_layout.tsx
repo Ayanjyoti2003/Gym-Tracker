@@ -19,7 +19,7 @@ import * as SplashScreen from 'expo-splash-screen';
 SplashScreen.preventAutoHideAsync();
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, isNewSignIn, clearNewSignIn } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   
@@ -61,9 +61,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       router.replace('/login');
     } else if (user && inAuthGroup) {
       // Redirect to tabs if user is authenticated and tries to access login page
-      router.replace('/(tabs)');
+      if (isNewSignIn) {
+        router.replace({ pathname: '/(tabs)/profile', params: { newSignIn: 'true' } });
+        clearNewSignIn();
+      } else {
+        router.replace('/(tabs)');
+      }
     }
-  }, [user, loading, isReady, segments, router]);
+  }, [user, loading, isReady, segments, router, isNewSignIn, clearNewSignIn]);
 
   if (loading || !isReady) {
     // Our custom premium Loading Screen animation

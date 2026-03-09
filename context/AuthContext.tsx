@@ -13,6 +13,8 @@ GoogleSignin.configure({
 type AuthContextType = {
   user: User | null;
   loading: boolean;
+  isNewSignIn: boolean;
+  clearNewSignIn: () => void;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -22,6 +24,9 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isNewSignIn, setIsNewSignIn] = useState(false);
+
+  const clearNewSignIn = () => setIsNewSignIn(false);
 
   useEffect(() => {
     // Listen for Firebase Auth state changes
@@ -47,6 +52,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const googleCredential = GoogleAuthProvider.credential(token);
       // Sign-in the user with the credential
       await signInWithCredential(auth, googleCredential);
+      
+      // Mark as a new explicit sign in
+      setIsNewSignIn(true);
     } catch (error) {
       console.error('Google Sign-In Error:', error);
       throw error;
@@ -63,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, loading, isNewSignIn, clearNewSignIn, signInWithGoogle, signOut }}>
       {children}
     </AuthContext.Provider>
   );
