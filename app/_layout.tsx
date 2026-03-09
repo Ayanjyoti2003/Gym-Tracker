@@ -14,6 +14,12 @@ export const unstable_settings = {
 };
 
 import * as SplashScreen from 'expo-splash-screen';
+import { vexo } from 'vexo-analytics';
+
+// Initialize Vexo Analytics
+if (process.env.EXPO_PUBLIC_VEXO_API_KEY) {
+  vexo(process.env.EXPO_PUBLIC_VEXO_API_KEY);
+}
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();

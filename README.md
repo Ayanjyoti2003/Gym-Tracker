@@ -19,6 +19,7 @@ An AI-powered React Native application designed for fitness enthusiasts to log w
 - **Backend & Auth:** Firebase (Firestore, Authentication)
 - **Local Storage:** AsyncStorage
 - **AI Form Analysis & Assistance:** Google Gemini AI API
+- **Analytics:** Expo Insights & Vexo Analytics
 - **UI Components:** Expo Vector Icons, React Native Reanimated
 
 ## Getting Started
@@ -53,6 +54,7 @@ An AI-powered React Native application designed for fitness enthusiasts to log w
    EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
    EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
    EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key
+   EXPO_PUBLIC_VEXO_API_KEY=your_vexo_api_key
    ```
 
 4. Start the application:
