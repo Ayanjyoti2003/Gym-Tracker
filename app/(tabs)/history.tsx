@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Dimensions, SafeAreaView } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { dualStorage } from '@/lib/storage';
-import { LineChart } from 'react-native-chart-kit';
 import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, Dimensions, FlatList, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -18,15 +18,16 @@ interface WorkoutLog {
   durationMins: number;
   date: string;
   timestamp: number;
+  setsData?: { reps: number; weight: number }[];
 }
 
 export default function HistoryScreen() {
   const { user } = useAuth();
   const { colors, accentColor } = useTheme();
-  
+
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
-  
+
   // Use useFocusEffect instead of useEffect to reload data every time the tab is visited
   useFocusEffect(
     useCallback(() => {
@@ -37,10 +38,10 @@ export default function HistoryScreen() {
   const fetchHistory = async () => {
     if (!user) return;
     setLoading(true);
-    
+
     // Fetch from dualStorage
     const allWorkouts = await dualStorage.getAllLocal('workouts');
-    
+
     // Sort descending by timestamp (newest first)
     allWorkouts.sort((a, b) => b.timestamp - a.timestamp);
     setLogs(allWorkouts as WorkoutLog[]);
@@ -64,9 +65,20 @@ export default function HistoryScreen() {
         </View>
         <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
           <Text style={styles.statLabel}>WEIGHT</Text>
-          <Text style={[styles.statValue, { color: colors.text }]}>{item.weight} <Text style={{fontSize: 12}}>lbs</Text></Text>
+          <Text style={[styles.statValue, { color: colors.text }]}>{item.weight} <Text style={{ fontSize: 12 }}>lbs</Text></Text>
         </View>
       </View>
+
+      {item.setsData && item.setsData.length > 0 && (
+        <View style={styles.setsDataContainer}>
+          {item.setsData.map((s, idx) => (
+            <View key={idx} style={styles.setsDataRow}>
+              <Text style={[styles.setsDataLabel, { color: colors.textMuted }]}>Set {idx + 1}</Text>
+              <Text style={[styles.setsDataValue, { color: colors.textMuted }]}>{s.reps} reps {s.weight > 0 ? `× ${s.weight} lbs` : ''}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 
@@ -76,12 +88,17 @@ export default function HistoryScreen() {
 
     // Group logs by date and calculate total volume
     const volumeByDate: { [key: string]: number } = {};
-    
+
     // Sort oldest to newest for the chart progression
     const sortedLogs = [...logs].sort((a, b) => a.timestamp - b.timestamp);
 
     sortedLogs.forEach(log => {
-      const vol = log.sets * log.reps * log.weight;
+      let vol = 0;
+      if (log.setsData && log.setsData.length > 0) {
+        vol = log.setsData.reduce((acc, curr) => acc + (curr.reps * (curr.weight || 1)), 0);
+      } else {
+        vol = log.sets * log.reps * (log.weight || 1); // fallback to 1 for bodyweight so it graphs something
+      }
       volumeByDate[log.date] = (volumeByDate[log.date] || 0) + vol;
     });
 
@@ -97,8 +114,8 @@ export default function HistoryScreen() {
       datasets: [
         {
           data: dataPoints,
-          color: (opacity = 1) => accentColor + Math.round(opacity * 255).toString(16).padStart(2, '0'), 
-          strokeWidth: 3 
+          color: (opacity = 1) => accentColor + Math.round(opacity * 255).toString(16).padStart(2, '0'),
+          strokeWidth: 3
         }
       ],
       legend: ["Total Volume (lbs)"]
@@ -263,5 +280,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#aaaaaa',
     marginTop: 8,
+  },
+  setsDataContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#333333',
+  },
+  setsDataRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  setsDataLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  setsDataValue: {
+    fontSize: 13,
   }
 });

@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, SafeAreaView } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { chatWithGemini } from '@/lib/genai';
 import { dualStorage } from '@/lib/storage';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 type Message = {
   id: string;
@@ -16,7 +16,7 @@ type Message = {
 export default function AiChatScreen() {
   const { user } = useAuth();
   const { colors, accentColor } = useTheme();
-  
+
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -27,12 +27,13 @@ export default function AiChatScreen() {
     }
   ]);
   const [loading, setLoading] = useState(false);
-  
+
   // Context state
   const [userProfile, setUserProfile] = useState<any>({});
   const [recentWorkouts, setRecentWorkouts] = useState<any[]>([]);
   const [gymConfig, setGymConfig] = useState<string[]>([]);
-  
+  const [weightUnit, setWeightUnit] = useState<string>('kg');
+
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -41,13 +42,16 @@ export default function AiChatScreen() {
 
   const loadContext = async () => {
     if (!user) return;
-    
+
     // Load all the context we need to feed to Gemini
     const profile = await dualStorage.getItem('data', 'profile', user.uid);
     if (profile) setUserProfile(profile);
 
     const config = await dualStorage.getItem('data', 'gym_config', user.uid);
     if (config?.exercises) setGymConfig(config.exercises);
+
+    const prefs = await dualStorage.getItem('data', 'preferences', user.uid);
+    if (prefs?.weightUnit) setWeightUnit(prefs.weightUnit);
 
     const allWorkouts = await dualStorage.getAllLocal('workouts');
     allWorkouts.sort((a, b) => b.timestamp - a.timestamp);
@@ -67,7 +71,7 @@ export default function AiChatScreen() {
       sender: 'user',
       timestamp: Date.now(),
     };
-    
+
     setMessages(prev => [...prev, userMessage]);
     setLoading(true);
 
@@ -76,13 +80,13 @@ export default function AiChatScreen() {
       .filter(m => m.id !== 'welcome_msg') // Skip the generic welcome
       .map(m => ({
         role: m.sender === 'user' ? 'user' : 'model',
-        parts: [{ text: m.text }] as [{text: string}]
+        parts: [{ text: m.text }] as [{ text: string }]
       }));
 
     // 3. Make API Call
     const aiResponseText = await chatWithGemini(
       userMessageText,
-      { profile: userProfile, recentLogs: recentWorkouts, equipment: gymConfig },
+      { profile: userProfile, recentLogs: recentWorkouts, equipment: gymConfig, weightUnit },
       historyForGemini
     );
 
@@ -104,9 +108,9 @@ export default function AiChatScreen() {
       <View style={styles.messageRow}>
         <View style={[styles.avatar, isUser ? { backgroundColor: colors.border } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
           {isUser ? (
-             <MaterialCommunityIcons name="account" size={20} color={colors.text} />
+            <MaterialCommunityIcons name="account" size={20} color={colors.text} />
           ) : (
-             <MaterialCommunityIcons name="robot-outline" size={20} color={accentColor} />
+            <MaterialCommunityIcons name="robot-outline" size={20} color={accentColor} />
           )}
         </View>
         <View style={styles.messageContent}>
@@ -121,43 +125,43 @@ export default function AiChatScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView 
-        style={styles.keyboardAvoidingView} 
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
         behavior="padding"
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 90}
       >
         <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={item => item.id}
-        renderItem={renderMessage}
-        contentContainerStyle={styles.chatContainer}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-      />
-      
-      <View style={[styles.inputContainer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-        <TextInput
-          style={[styles.textInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
-          placeholder="Ask for a routine, diet advice, etc..."
-          placeholderTextColor={colors.textMuted}
-          value={inputText}
-          onChangeText={setInputText}
-          multiline
-          maxLength={500}
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={item => item.id}
+          renderItem={renderMessage}
+          contentContainerStyle={styles.chatContainer}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
         />
-        <TouchableOpacity 
-          style={[styles.sendButton, !inputText.trim() ? { backgroundColor: colors.border } : { backgroundColor: accentColor }]} 
-          onPress={sendMessage}
-          disabled={!inputText.trim() || loading}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <MaterialCommunityIcons name="send" size={20} color={inputText.trim() ? "#ffffff" : colors.textMuted} />
-          )}
-        </TouchableOpacity>
-      </View>
+
+        <View style={[styles.inputContainer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+          <TextInput
+            style={[styles.textInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+            placeholder="Ask for a routine, diet advice, etc..."
+            placeholderTextColor={colors.textMuted}
+            value={inputText}
+            onChangeText={setInputText}
+            multiline
+            maxLength={500}
+          />
+          <TouchableOpacity
+            style={[styles.sendButton, !inputText.trim() ? { backgroundColor: colors.border } : { backgroundColor: accentColor }]}
+            onPress={sendMessage}
+            disabled={!inputText.trim() || loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <MaterialCommunityIcons name="send" size={20} color={inputText.trim() ? "#ffffff" : colors.textMuted} />
+            )}
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

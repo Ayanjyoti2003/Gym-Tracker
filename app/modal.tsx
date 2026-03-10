@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { dualStorage } from '@/lib/storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { MASTER_EXERCISES } from '@/constants/exercises';
 
@@ -28,13 +28,48 @@ export default function LogWorkoutModal() {
   const [reps, setReps] = useState('10');
   const [weight, setWeight] = useState('');
 
+  // New: Separate Set Data State
+  const [isSeparateSets, setIsSeparateSets] = useState(false);
+  const [setsData, setSetsData] = useState<{ reps: string, weight: string }[]>(
+    Array.from({ length: 3 }).map(() => ({ reps: '10', weight: '' }))
+  );
+
+  // Update sets array when 'sets' count changes
+  const handleSetsChange = (val: string) => {
+    setSets(val);
+    const numSets = parseInt(val) || 0;
+    if (numSets > 0 && numSets <= 20) {
+      setSetsData(prev => {
+        const newData = [...prev];
+        if (numSets > newData.length) {
+          // Add new sets
+          for (let i = newData.length; i < numSets; i++) {
+            newData.push({ reps: reps, weight: weight });
+          }
+        } else if (numSets < newData.length) {
+          // Remove sets
+          newData.splice(numSets);
+        }
+        return newData;
+      });
+    }
+  };
+
+  const updateSetData = (index: number, field: 'reps' | 'weight', value: string) => {
+    setSetsData(prev => {
+      const newData = [...prev];
+      newData[index] = { ...newData[index], [field]: value };
+      return newData;
+    });
+  };
+
   // Cardio Specific State
   const [speedVal, setSpeedVal] = useState('');
   const [inclineVal, setInclineVal] = useState('');
 
   const handleSave = async () => {
     if (!user) return;
-    
+
     // Validation
     if (!isCardio && !isBodyweight && !weight) {
       Alert.alert('Missing Info', 'Please enter the weight used.');
@@ -48,7 +83,7 @@ export default function LogWorkoutModal() {
     setSaving(true);
     try {
       const workoutId = `log_${Date.now()}`;
-      
+
       const payload: any = {
         exerciseId,
         exerciseName,
@@ -63,12 +98,26 @@ export default function LogWorkoutModal() {
         payload.incline = inclineVal; // Kept as string to allow "0-9"
       } else {
         payload.sets = Number(sets);
-        payload.reps = Number(reps);
-        payload.weight = isBodyweight ? 0 : Number(weight);
+        if (isSeparateSets) {
+          payload.setsData = setsData.map(s => ({
+            reps: Number(s.reps) || 0,
+            weight: isBodyweight ? 0 : (Number(s.weight) || 0)
+          }));
+          // Also set average/max for backwards compatibility charting
+          payload.reps = Math.round(payload.setsData.reduce((acc: number, curr: any) => acc + curr.reps, 0) / payload.sets);
+          payload.weight = isBodyweight ? 0 : Math.max(...payload.setsData.map((s: any) => s.weight));
+        } else {
+          payload.reps = Number(reps);
+          payload.weight = isBodyweight ? 0 : Number(weight);
+          payload.setsData = Array.from({ length: Number(sets) }).map(() => ({
+            reps: Number(reps),
+            weight: isBodyweight ? 0 : Number(weight)
+          }));
+        }
       }
 
       await dualStorage.setItem('workouts', workoutId, payload, user.uid);
-      
+
       router.back();
     } catch (e) {
       Alert.alert('Error', 'Failed to log workout.');
@@ -77,13 +126,13 @@ export default function LogWorkoutModal() {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={[styles.container, { backgroundColor: colors.background }]} 
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={0}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        
+
         <View style={styles.header}>
           <View style={[styles.iconCircle, { backgroundColor: accentColor, shadowColor: accentColor }]}>
             <MaterialCommunityIcons name="check-all" size={32} color="#ffffff" />
@@ -91,16 +140,16 @@ export default function LogWorkoutModal() {
           <Text style={[styles.title, { color: colors.text }]}>Log {exerciseName}</Text>
           <Text style={[styles.subtitle, { color: colors.textMuted }]}>Record your stats for today.</Text>
         </View>
-        
+
         {isCardio ? (
           <>
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Speed Range (mph/kmh)</Text>
               <Text style={[styles.helperText, { color: colors.textMuted }]}>Example: "3" or "3-5.5"</Text>
-              <TextInput 
-                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]} 
-                placeholder="e.g. 3-5.5" 
-                placeholderTextColor={colors.textMuted} 
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]}
+                placeholder="e.g. 3-5.5"
+                placeholderTextColor={colors.textMuted}
                 value={speedVal}
                 onChangeText={setSpeedVal}
               />
@@ -109,10 +158,10 @@ export default function LogWorkoutModal() {
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Incline / Resistance</Text>
               <Text style={[styles.helperText, { color: colors.textMuted }]}>Example: "0" or "5-9"</Text>
-              <TextInput 
-                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]} 
-                placeholder="e.g. 5-9" 
-                placeholderTextColor={colors.textMuted}  
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]}
+                placeholder="e.g. 5-9"
+                placeholderTextColor={colors.textMuted}
                 value={inclineVal}
                 onChangeText={setInclineVal}
               />
@@ -120,39 +169,85 @@ export default function LogWorkoutModal() {
           </>
         ) : (
           <>
-            <View style={styles.row}>
-              <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
-                <Text style={[styles.label, { color: colors.text }]}>Sets</Text>
-                <TextInput 
-                  style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]} 
-                  keyboardType="numeric" 
-                  value={sets}
-                  onChangeText={setSets}
-                />
-              </View>
-              <View style={[styles.formGroup, { flex: 1, marginLeft: 10 }]}>
-                <Text style={[styles.label, { color: colors.text }]}>Reps per set</Text>
-                <TextInput 
-                  style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]} 
-                  keyboardType="numeric" 
-                  value={reps}
-                  onChangeText={setReps}
-                />
-              </View>
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>Total Sets</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]}
+                keyboardType="numeric"
+                value={sets}
+                onChangeText={handleSetsChange}
+              />
             </View>
 
-            {!isBodyweight && (
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, { color: colors.text }]}>Weight (kg/lbs)</Text>
-                <TextInput 
-                  style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]} 
-                  placeholder="e.g. 100" 
-                  placeholderTextColor={colors.textMuted} 
-                  keyboardType="numeric" 
-                  value={weight}
-                  onChangeText={setWeight}
-                  autoFocus
-                />
+            <View style={styles.toggleRow}>
+              <Text style={[styles.toggleLabel, { color: colors.text }]}>Input data for each set separately?</Text>
+              <TouchableOpacity
+                style={[styles.toggleBtn, isSeparateSets ? { backgroundColor: accentColor } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+                onPress={() => setIsSeparateSets(!isSeparateSets)}
+              >
+                <Text style={{ color: isSeparateSets ? '#fff' : colors.text, fontWeight: 'bold' }}>
+                  {isSeparateSets ? 'Yes' : 'No'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {!isSeparateSets ? (
+              <>
+                <View style={styles.row}>
+                  <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
+                    <Text style={[styles.label, { color: colors.text }]}>Reps per set</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]}
+                      keyboardType="numeric"
+                      value={reps}
+                      onChangeText={setReps}
+                    />
+                  </View>
+                  {!isBodyweight && (
+                    <View style={[styles.formGroup, { flex: 1, marginLeft: 10 }]}>
+                      <Text style={[styles.label, { color: colors.text }]}>Weight</Text>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]}
+                        placeholder="e.g. 100"
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType="numeric"
+                        value={weight}
+                        onChangeText={setWeight}
+                      />
+                    </View>
+                  )}
+                </View>
+              </>
+            ) : (
+              <View style={styles.separateSetsContainer}>
+                {setsData.map((setData, index) => (
+                  <View key={index} style={[styles.setRow, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
+                    <Text style={[styles.setNumber, { color: colors.text, backgroundColor: colors.card }]}>Set {index + 1}</Text>
+                    <View style={styles.row}>
+                      <View style={[styles.formGroup, { flex: 1, marginRight: 10, marginBottom: 0 }]}>
+                        <Text style={[styles.label, { color: colors.textMuted, fontSize: 12 }]}>Reps</Text>
+                        <TextInput
+                          style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor, padding: 12, fontSize: 16 }]}
+                          keyboardType="numeric"
+                          value={setData.reps}
+                          onChangeText={(v) => updateSetData(index, 'reps', v)}
+                        />
+                      </View>
+                      {!isBodyweight && (
+                        <View style={[styles.formGroup, { flex: 1, marginLeft: 10, marginBottom: 0 }]}>
+                          <Text style={[styles.label, { color: colors.textMuted, fontSize: 12 }]}>Weight</Text>
+                          <TextInput
+                            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor, padding: 12, fontSize: 16 }]}
+                            placeholderTextColor={colors.textMuted}
+                            keyboardType="numeric"
+                            value={setData.weight}
+                            onChangeText={(v) => updateSetData(index, 'weight', v)}
+                          />
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))}
               </View>
             )}
           </>
@@ -161,18 +256,18 @@ export default function LogWorkoutModal() {
         <View style={styles.formGroup}>
           <Text style={[styles.label, { color: colors.text }]}>Execution Time (minutes)</Text>
           <Text style={[styles.helperText, { color: colors.textMuted }]}>Used by AI to estimate calories burned.</Text>
-          <TextInput 
-            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]} 
-            placeholder="e.g. 15" 
-            placeholderTextColor={colors.textMuted} 
-            keyboardType="numeric" 
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]}
+            placeholder="e.g. 15"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="numeric"
             value={duration}
             onChangeText={setDuration}
           />
         </View>
 
-        <TouchableOpacity 
-          style={[styles.saveButton, { backgroundColor: accentColor, shadowColor: accentColor }, saving && { opacity: 0.7 }]} 
+        <TouchableOpacity
+          style={[styles.saveButton, { backgroundColor: accentColor, shadowColor: accentColor }, saving && { opacity: 0.7 }]}
           onPress={handleSave}
           disabled={saving}
         >
@@ -182,7 +277,7 @@ export default function LogWorkoutModal() {
             <Text style={styles.saveButtonText}>Save Workout</Text>
           )}
         </TouchableOpacity>
-        
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -273,5 +368,47 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    padding: 12,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+  },
+  toggleLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  toggleBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginLeft: 10,
+  },
+  separateSetsContainer: {
+    marginBottom: 20,
+  },
+  setRow: {
+    padding: 16,
+    borderWidth: 1,
+    borderRadius: 16,
+    marginBottom: 16,
+    position: 'relative',
+    marginTop: 10,
+  },
+  setNumber: {
+    position: 'absolute',
+    top: -12,
+    left: 16,
+    paddingHorizontal: 8,
+    fontSize: 12,
+    fontWeight: 'bold',
+    borderWidth: 1,
+    borderColor: 'transparent', // Match border radius tricks
+    borderRadius: 8,
   }
 });

@@ -16,7 +16,7 @@ export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) =>
 
       Recent Workout Logs (last 5 sessions):
       ${JSON.stringify(recentLogs, null, 2)}
-      (Note: "type: 'cardio'" exercises will have 'speed' and 'incline' string ranges instead of sets/reps/weight)
+      (Note: "type: 'cardio'" exercises will have 'speed' and 'incline' string ranges instead of sets/reps/weight; "setsData" if present contains specific reps/weight for each set)
 
       Based on this data, please provide:
       1. An estimated total calorie burn for the most recent session using standard MET values for the exercises based on the user's weight and the execution time (durationMins). Take into account the speed and incline values if present.
@@ -38,7 +38,7 @@ export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) =>
     return "I couldn't generate insights right now. Double-check your API key configuration in the .env file and ensure you have an active network connection!";
   }
 };
-export const chatWithGemini = async (message: string, context: { profile: any, recentLogs: any[], equipment: string[] }, chatHistory: {role: string, parts: [{text: string}]}[] = []) => {
+export const chatWithGemini = async (message: string, context: { profile: any, recentLogs: any[], equipment: string[], weightUnit: string }, chatHistory: { role: string, parts: [{ text: string }] }[] = []) => {
   try {
     const systemInstruction = `
       You are Gym Tracker AI, an expert, incredibly encouraging personal trainer and nutritionist built right into the user's mobile app.
@@ -47,13 +47,14 @@ export const chatWithGemini = async (message: string, context: { profile: any, r
       USER CONTEXT:
       Name: ${context.profile?.name || 'Unknown'}
       Height: ${context.profile?.height || 'Unknown'} cm
-      Weight: ${context.profile?.weight || 'Unknown'} kg
+      Weight: ${context.profile?.weight || 'Unknown'} ${context.weightUnit}
       Goals: ${context.profile?.goals || 'General fitness'}
       Available Equipment IDs: ${context.equipment.join(', ') || 'Unknown'}
+      Preferred Weight Unit: ${context.weightUnit}
       
       Recent Workouts (Last 5):
       ${JSON.stringify(context.recentLogs, null, 2)}
-      (Note: "type: 'cardio'" exercises use 'speed' and 'incline' string ranges instead of sets/reps/weight)
+      (Note: "type: 'cardio'" exercises use 'speed' and 'incline' string ranges; "setsData" if present contains specific reps/weight for each set)
       
       Always tailor your advice specifically to their goals, their recent performance, and the equipment they actually have available in their gym.
     `;
@@ -78,7 +79,7 @@ export const chatWithGemini = async (message: string, context: { profile: any, r
   }
 };
 
-export const generateCustomRoutine = async (profileData: any, recentLogs: any[]) => {
+export const generateCustomRoutine = async (profileData: any, recentLogs: any[], weightUnit: string = 'kg') => {
   try {
     const prompt = `
       You are an elite AI Personal Trainer. Based on the user's profile and their workout history, create a highly personalized 1-day custom workout routine.
@@ -86,13 +87,15 @@ export const generateCustomRoutine = async (profileData: any, recentLogs: any[])
       User Profile:
       - Name: ${profileData?.name || 'User'}
       - Height: ${profileData?.height || 'Unknown'} cm
-      - Weight: ${profileData?.weight || 'Unknown'} kg
+      - Weight: ${profileData?.weight || 'Unknown'} ${weightUnit}
+      - Preferred Weight Unit: ${weightUnit}
       - Goals: ${profileData?.goals || 'General fitness'}
       - Gym Experience: ${profileData?.experienceValue ? profileData.experienceValue + ' ' + (profileData.experienceUnit || 'months') : 'Beginner / Newbie'}
       - Recent Break/Gap: ${profileData?.gapValue && profileData?.gapUnit !== 'none' ? profileData.gapValue + ' ' + profileData.gapUnit : 'None'}
 
       Recent Workout Logs (Historical Data):
       ${JSON.stringify(recentLogs, null, 2)}
+      (Note: "setsData" if present contains specific reps/weight for each set)
       
       INSTRUCTIONS:
       1. Carefully assess their Gym Experience and their Recent Break/Gap.
@@ -127,7 +130,7 @@ export const generateCustomRoutine = async (profileData: any, recentLogs: any[])
     });
 
     const responseText = response.text || "{}";
-    
+
     try {
       return JSON.parse(responseText);
     } catch (parseError) {

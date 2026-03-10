@@ -1,20 +1,20 @@
-import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, SafeAreaView } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
+import { generateCustomRoutine, getWorkoutInsights } from '@/lib/genai';
 import { dualStorage } from '@/lib/storage';
-import { getWorkoutInsights, generateCustomRoutine } from '@/lib/genai';
-import { useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function DashboardScreen() {
   const { user, signOut } = useAuth();
   const { colors, accentColor } = useTheme();
-  
+
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [insightText, setInsightText] = useState('');
   const [canGenerate, setCanGenerate] = useState(false);
-  
+
   const [generatingRoutine, setGeneratingRoutine] = useState(false);
   const [customRoutine, setCustomRoutine] = useState<any>(null);
 
@@ -31,7 +31,7 @@ export default function DashboardScreen() {
     if (allWorkouts.length > 0) {
       setCanGenerate(true);
     }
-    
+
     // Load existing custom routine if available
     const routineData = await dualStorage.getItem('data', 'custom_routine', user.uid);
     if (routineData) {
@@ -42,10 +42,10 @@ export default function DashboardScreen() {
   const generateAIInsights = async () => {
     if (!user) return;
     setLoadingInsights(true);
-    
+
     const profileData = await dualStorage.getItem('data', 'profile', user.uid);
     const allWorkouts = await dualStorage.getAllLocal('workouts');
-    
+
     // Sort descending and get last 5
     allWorkouts.sort((a, b) => b.timestamp - a.timestamp);
     const recentLogs = allWorkouts.slice(0, 5);
@@ -58,19 +58,22 @@ export default function DashboardScreen() {
   const handleGenerateRoutine = async () => {
     if (!user) return;
     setGeneratingRoutine(true);
-    
+
     const profileData = await dualStorage.getItem('data', 'profile', user.uid);
     const allWorkouts = await dualStorage.getAllLocal('workouts');
     allWorkouts.sort((a: any, b: any) => b.timestamp - a.timestamp);
     const recentLogs = allWorkouts.slice(0, 5);
-    
-    const generatedRoutine = await generateCustomRoutine(profileData, recentLogs);
+
+    const prefs = await dualStorage.getItem('data', 'preferences', user.uid);
+    const weightUnit = prefs?.weightUnit || 'kg';
+
+    const generatedRoutine = await generateCustomRoutine(profileData, recentLogs, weightUnit);
     if (generatedRoutine) {
       setCustomRoutine(generatedRoutine);
       // Save it locally/cloud so it persists
       await dualStorage.setItem('data', 'custom_routine', generatedRoutine, user.uid);
     }
-    
+
     setGeneratingRoutine(false);
   };
 
@@ -78,108 +81,108 @@ export default function DashboardScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
         <View style={styles.headerRow}>
-        <View>
-          <Text style={[styles.title, { color: colors.text }]}>Welcome, {user?.displayName ? user.displayName.split(' ')[0] : 'Athlete'}</Text>
-          <Text style={[styles.subtitle, { color: colors.textMuted }]}>Ready to crush your goals today?</Text>
-        </View>
-      </View>
-      
-      {/* Gen AI Insights */}
-      <View style={[styles.aiCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: accentColor }]}>
-        <View style={styles.aiHeader}>
-          <MaterialCommunityIcons name="robot-outline" size={24} color={accentColor} />
-          <Text style={[styles.aiTitle, { color: colors.text }]}>AI Insights ✨</Text>
-        </View>
-        
-        {insightText ? (
-          <Text style={[styles.aiText, { color: colors.text }]}>{insightText}</Text>
-        ) : (
-          <Text style={[styles.aiText, { color: colors.textMuted }]}>
-            {canGenerate 
-              ? "You've logged workouts! Tap below to analyze them and estimate your calories burned."
-              : "Log a workout in the Library to get personalized AI suggestions and calorie estimates!"}
-          </Text>
-        )}
-
-        {canGenerate && !insightText && (
-          <TouchableOpacity 
-            style={[styles.generateBtn, { backgroundColor: accentColor }]} 
-            onPress={generateAIInsights}
-            disabled={loadingInsights}
-          >
-            {loadingInsights ? (
-              <ActivityIndicator color="#ffffff" size="small" />
-            ) : (
-              <Text style={styles.generateBtnText}>Generate Insights</Text>
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Custom Routine Card */}
-      <View style={[styles.aiCard, { backgroundColor: colors.card, borderColor: accentColor + '80' }]}>
-        <View style={styles.aiHeader}>
-          <MaterialCommunityIcons name="lightning-bolt" size={24} color={accentColor} />
-          <Text style={[styles.aiTitle, { color: colors.text }]}>Your Custom Routine 🔥</Text>
-        </View>
-
-        {!customRoutine ? (
           <View>
+            <Text style={[styles.title, { color: colors.text }]}>Welcome, {user?.displayName ? user.displayName.split(' ')[0] : 'Athlete'}</Text>
+            <Text style={[styles.subtitle, { color: colors.textMuted }]}>Ready to crush your goals today?</Text>
+          </View>
+        </View>
+
+        {/* Gen AI Insights */}
+        <View style={[styles.aiCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: accentColor }]}>
+          <View style={styles.aiHeader}>
+            <MaterialCommunityIcons name="robot-outline" size={24} color={accentColor} />
+            <Text style={[styles.aiTitle, { color: colors.text }]}>AI Insights ✨</Text>
+          </View>
+
+          {insightText ? (
+            <Text style={[styles.aiText, { color: colors.text }]}>{insightText}</Text>
+          ) : (
             <Text style={[styles.aiText, { color: colors.textMuted }]}>
-              Get a highly personalized 1-day workout routine tailored to your goals, experience, and past performance.
+              {canGenerate
+                ? "You've logged workouts! Tap below to analyze them and estimate your calories burned."
+                : "Log a workout in the Library to get personalized AI suggestions and calorie estimates!"}
             </Text>
-            <TouchableOpacity 
-              style={[styles.generateBtn, { backgroundColor: accentColor }]} 
-              onPress={handleGenerateRoutine}
-              disabled={generatingRoutine}
+          )}
+
+          {canGenerate && !insightText && (
+            <TouchableOpacity
+              style={[styles.generateBtn, { backgroundColor: accentColor }]}
+              onPress={generateAIInsights}
+              disabled={loadingInsights}
             >
-              {generatingRoutine ? (
+              {loadingInsights ? (
                 <ActivityIndicator color="#ffffff" size="small" />
               ) : (
-                <Text style={styles.generateBtnText}>Generate My Routine</Text>
+                <Text style={styles.generateBtnText}>Generate Insights</Text>
               )}
             </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Custom Routine Card */}
+        <View style={[styles.aiCard, { backgroundColor: colors.card, borderColor: accentColor + '80' }]}>
+          <View style={styles.aiHeader}>
+            <MaterialCommunityIcons name="lightning-bolt" size={24} color={accentColor} />
+            <Text style={[styles.aiTitle, { color: colors.text }]}>Your Custom Routine 🔥</Text>
           </View>
-        ) : (
-          <View>
-            <Text style={[styles.routineTitle, { color: colors.text }]}>{customRoutine.routineName}</Text>
-            <Text style={[styles.routineDesc, { color: colors.textMuted }]}>{customRoutine.description}</Text>
-            
-            {customRoutine.exercises?.map((ex: any, idx: number) => (
-              <View key={idx} style={[styles.exerciseBlock, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
-                <View style={styles.exerciseHeader}>
-                  <Text style={[styles.exerciseName, { color: colors.text }]}>{idx + 1}. {ex.name}</Text>
-                  <View style={[styles.badge, { backgroundColor: accentColor + '20' }]}>
-                    <Text style={[styles.badgeText, { color: accentColor }]}>{ex.sets}x{ex.reps}</Text>
+
+          {!customRoutine ? (
+            <View>
+              <Text style={[styles.aiText, { color: colors.textMuted }]}>
+                Get a highly personalized 1-day workout routine tailored to your goals, experience, and past performance.
+              </Text>
+              <TouchableOpacity
+                style={[styles.generateBtn, { backgroundColor: accentColor }]}
+                onPress={handleGenerateRoutine}
+                disabled={generatingRoutine}
+              >
+                {generatingRoutine ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.generateBtnText}>Generate My Routine</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View>
+              <Text style={[styles.routineTitle, { color: colors.text }]}>{customRoutine.routineName}</Text>
+              <Text style={[styles.routineDesc, { color: colors.textMuted }]}>{customRoutine.description}</Text>
+
+              {customRoutine.exercises?.map((ex: any, idx: number) => (
+                <View key={idx} style={[styles.exerciseBlock, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
+                  <View style={styles.exerciseHeader}>
+                    <Text style={[styles.exerciseName, { color: colors.text }]}>{idx + 1}. {ex.name}</Text>
+                    <View style={[styles.badge, { backgroundColor: accentColor + '20' }]}>
+                      <Text style={[styles.badgeText, { color: accentColor }]}>{ex.sets}x{ex.reps}</Text>
+                    </View>
                   </View>
+                  <Text style={[styles.exerciseWeight, { color: colors.text }]}>Starting Weight: {ex.weightSuggestion}</Text>
+
+                  <Text style={[styles.exerciseDetail, { color: colors.textMuted, marginTop: 8 }]}><Text style={{ fontWeight: 'bold' }}>Reason:</Text> {ex.reason}</Text>
+                  <Text style={[styles.exerciseDetail, { color: colors.textMuted }]}><Text style={{ fontWeight: 'bold' }}>Benefit:</Text> {ex.benefit}</Text>
                 </View>
-                <Text style={[styles.exerciseWeight, { color: colors.text }]}>Starting Weight: {ex.weightSuggestion}</Text>
-                
-                <Text style={[styles.exerciseDetail, { color: colors.textMuted, marginTop: 8 }]}><Text style={{fontWeight: 'bold'}}>Reason:</Text> {ex.reason}</Text>
-                <Text style={[styles.exerciseDetail, { color: colors.textMuted }]}><Text style={{fontWeight: 'bold'}}>Benefit:</Text> {ex.benefit}</Text>
-              </View>
-            ))}
+              ))}
 
-            <TouchableOpacity 
-              style={[styles.regenerateBtn, { borderColor: colors.border }]} 
-              onPress={handleGenerateRoutine}
-              disabled={generatingRoutine}
-            >
-              {generatingRoutine ? (
-                <ActivityIndicator color={colors.text} size="small" />
-              ) : (
-                <Text style={[styles.regenerateBtnText, { color: colors.text }]}>Regenerate Routine</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+              <TouchableOpacity
+                style={[styles.regenerateBtn, { borderColor: colors.border }]}
+                onPress={handleGenerateRoutine}
+                disabled={generatingRoutine}
+              >
+                {generatingRoutine ? (
+                  <ActivityIndicator color={colors.text} size="small" />
+                ) : (
+                  <Text style={[styles.regenerateBtnText, { color: colors.text }]}>Regenerate Routine</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
-      <View style={[styles.infoBox, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
-        <MaterialCommunityIcons name="cloud-sync-outline" size={32} color={colors.textMuted} />
-        <Text style={[styles.infoTitle, { color: colors.text }]}>Dual Storage Active</Text>
-        <Text style={[styles.infoDesc, { color: colors.textMuted }]}>Your workouts are saved instantly to your phone and backed up securely to your Google Account when online.</Text>
-      </View>
+        <View style={[styles.infoBox, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
+          <MaterialCommunityIcons name="cloud-sync-outline" size={32} color={colors.textMuted} />
+          <Text style={[styles.infoTitle, { color: colors.text }]}>Dual Storage Active</Text>
+          <Text style={[styles.infoDesc, { color: colors.textMuted }]}>Your workouts are saved instantly to your phone and backed up securely to your Google Account when online.</Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

@@ -1,8 +1,9 @@
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, Switch, ScrollView } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
-import { useTheme, DEFAULT_ACCENT } from '@/context/ThemeContext';
+import { DEFAULT_ACCENT, useTheme } from '@/context/ThemeContext';
+import { dualStorage } from '@/lib/storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
+import { useEffect, useState } from 'react';
+import { Alert, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 const THEME_COLORS = [
   DEFAULT_ACCENT, // Pink/Red
   '#00d2d3', // Cyan
@@ -15,6 +16,54 @@ const THEME_COLORS = [
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { mode, accentColor, colors, setMode, setAccentColor } = useTheme();
+
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    // Load existing preference
+    const loadPrefs = async () => {
+      if (user) {
+        const prefs = await dualStorage.getItem('data', 'preferences', user.uid);
+        if (prefs?.weightUnit) setWeightUnit(prefs.weightUnit);
+      }
+    };
+    loadPrefs();
+  }, [user]);
+
+  const toggleWeightUnit = async () => {
+    const newUnit = weightUnit === 'kg' ? 'lbs' : 'kg';
+    setWeightUnit(newUnit);
+    if (user) {
+      await dualStorage.setItem('data', 'preferences', { weightUnit: newUnit }, user.uid);
+    }
+  };
+
+  const syncDataFromCloud = async () => {
+    if (!user) return;
+    Alert.alert(
+      "Sync from Cloud",
+      "This will overwrite your local unsynced workouts with the data stored on Google's servers. Proceed?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sync Now",
+          onPress: async () => {
+            setSyncing(true);
+            try {
+              await dualStorage.restoreFromCloud('workouts', user.uid);
+              await dualStorage.restoreFromCloud('profile', user.uid);
+              await dualStorage.restoreFromCloud('gym_config', user.uid);
+              Alert.alert("Success", "Your data has been successfully restored from the cloud!");
+            } catch (error) {
+              Alert.alert("Error", "Failed to sync data. Check your internet connection.");
+            }
+            setSyncing(false);
+          }
+        }
+      ]
+    );
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -58,7 +107,7 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Appearance</Text>
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
-            
+
             {/* Dark Mode Toggle */}
             <View style={[styles.row, { borderBottomColor: colors.border }]}>
               <View style={[styles.iconContainer, { backgroundColor: colors.cardElevated }]}>
@@ -67,7 +116,7 @@ export default function SettingsScreen() {
               <View style={styles.rowText}>
                 <Text style={[styles.rowTitle, { color: colors.text }]}>Dark Mode</Text>
               </View>
-              <Switch 
+              <Switch
                 value={mode === 'dark'}
                 onValueChange={toggleMode}
                 trackColor={{ false: '#dcdde1', true: accentColor }}
@@ -78,7 +127,7 @@ export default function SettingsScreen() {
             {/* Accent Color Picker */}
             <View style={[styles.row, { borderBottomWidth: 0, flexDirection: 'column', alignItems: 'flex-start' }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                 <View style={[styles.iconContainer, { backgroundColor: colors.cardElevated }]}>
+                <View style={[styles.iconContainer, { backgroundColor: colors.cardElevated }]}>
                   <MaterialCommunityIcons name="palette" size={24} color={colors.textMuted} />
                 </View>
                 <View style={styles.rowText}>
@@ -88,10 +137,10 @@ export default function SettingsScreen() {
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.colorScroll}>
                 {THEME_COLORS.map(colorHex => (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     key={colorHex}
                     style={[
-                      styles.colorCircle, 
+                      styles.colorCircle,
                       { backgroundColor: colorHex },
                       accentColor === colorHex && { borderWidth: 3, borderColor: colors.text }
                     ]}
@@ -104,11 +153,48 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* PREFERENCES SECTION */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferences</Text>
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+
+            {/* Weight Unit Toggle */}
+            <View style={[styles.row, { borderBottomColor: colors.border }]}>
+              <View style={[styles.iconContainer, { backgroundColor: colors.cardElevated }]}>
+                <MaterialCommunityIcons name="weight-kilogram" size={24} color={colors.textMuted} />
+              </View>
+              <View style={styles.rowText}>
+                <Text style={[styles.rowTitle, { color: colors.text }]}>Weight Unit</Text>
+                <Text style={[styles.rowSubtitle, { color: colors.textMuted }]}>{weightUnit === 'kg' ? 'Kilograms (kg)' : 'Pounds (lbs)'}</Text>
+              </View>
+              <Switch
+                value={weightUnit === 'lbs'}
+                onValueChange={toggleWeightUnit}
+                trackColor={{ false: '#dcdde1', true: accentColor }}
+                thumbColor={'#ffffff'}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* DATA MANAGEMENT */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Data Management</Text>
+          <TouchableOpacity
+            style={[styles.logoutButton, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 16 }]}
+            onPress={syncDataFromCloud}
+            disabled={syncing}
+          >
+            <MaterialCommunityIcons name="cloud-download-outline" size={24} color={colors.text} />
+            <Text style={[styles.logoutText, { color: colors.text }]}>{syncing ? "Syncing..." : "Sync Data from Cloud"}</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* DANGER ZONE */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Danger Zone</Text>
-          <TouchableOpacity 
-            style={[styles.logoutButton, { backgroundColor: colors.card, borderColor: '#ff475730' }]} 
+          <TouchableOpacity
+            style={[styles.logoutButton, { backgroundColor: colors.card, borderColor: '#ff475730' }]}
             onPress={handleLogout}
           >
             <MaterialCommunityIcons name="logout" size={24} color="#ff4757" />
