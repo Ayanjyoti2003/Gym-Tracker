@@ -4,7 +4,7 @@ import { dualStorage } from '@/lib/storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { MASTER_EXERCISES } from '@/constants/exercises';
 
@@ -181,14 +181,12 @@ export default function LogWorkoutModal() {
 
             <View style={styles.toggleRow}>
               <Text style={[styles.toggleLabel, { color: colors.text }]}>Input data for each set separately?</Text>
-              <TouchableOpacity
-                style={[styles.toggleBtn, isSeparateSets ? { backgroundColor: accentColor } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
-                onPress={() => setIsSeparateSets(!isSeparateSets)}
-              >
-                <Text style={{ color: isSeparateSets ? '#fff' : colors.text, fontWeight: 'bold' }}>
-                  {isSeparateSets ? 'Yes' : 'No'}
-                </Text>
-              </TouchableOpacity>
+              <Switch
+                value={isSeparateSets}
+                onValueChange={setIsSeparateSets}
+                trackColor={{ false: '#dcdde1', true: accentColor }}
+                thumbColor={'#ffffff'}
+              />
             </View>
 
             {!isSeparateSets ? (
