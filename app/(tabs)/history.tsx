@@ -151,7 +151,7 @@ export default function HistoryScreen() {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>No workouts logged yet.</Text>
-            <Text style={styles.emptySub}>Head to the Library to start recording!</Text>
+            <Text style={styles.emptySub}>Head to the Gym to start recording!</Text>
           </View>
         }
         ListHeaderComponent={

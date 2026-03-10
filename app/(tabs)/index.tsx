@@ -100,7 +100,7 @@ export default function DashboardScreen() {
             <Text style={[styles.aiText, { color: colors.textMuted }]}>
               {canGenerate
                 ? "You've logged workouts! Tap below to analyze them and estimate your calories burned."
-                : "Log a workout in the Library to get personalized AI suggestions and calorie estimates!"}
+                : "Log a workout in the Gym to get personalized AI suggestions and calorie estimates!"}
             </Text>
           )}
 

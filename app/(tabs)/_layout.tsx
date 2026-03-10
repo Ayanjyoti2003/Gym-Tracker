@@ -1,7 +1,6 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useTheme } from '@/context/ThemeContext';
 
@@ -38,10 +37,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="library"
+        name="gym"
         options={{
-          title: 'Library',
-          tabBarIcon: ({ color }) => <MaterialCommunityIcons name="weight-lifter" size={24} color={color} />,
+          title: 'Gym',
+          tabBarIcon: ({ color }) => <MaterialCommunityIcons name="dumbbell" size={28} color={color} />,
         }}
       />
       <Tabs.Screen
