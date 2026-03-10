@@ -18,6 +18,7 @@ export default function LogWorkoutModal() {
   const exerciseDef = MASTER_EXERCISES.find(e => e.id === exerciseId);
   const isCardio = exerciseDef?.type === 'cardio';
   const isBodyweight = exerciseDef?.type === 'bodyweight';
+  const isBattleRopes = exerciseId === 'battle_ropes';
 
   // Common State
   const [duration, setDuration] = useState('15');
@@ -33,6 +34,15 @@ export default function LogWorkoutModal() {
   const [setsData, setSetsData] = useState<{ reps: string, weight: string }[]>(
     Array.from({ length: 3 }).map(() => ({ reps: '10', weight: '' }))
   );
+
+  // Technique State (for Battle Ropes)
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
+
+  const toggleOption = (option: string) => {
+    setSelectedOptions(prev =>
+      prev.includes(option) ? prev.filter(o => o !== option) : [...prev, option]
+    );
+  };
 
   // Update sets array when 'sets' count changes
   const handleSetsChange = (val: string) => {
@@ -96,6 +106,12 @@ export default function LogWorkoutModal() {
       if (isCardio) {
         payload.speed = speedVal; // Kept as string to allow "3-5"
         payload.incline = inclineVal; // Kept as string to allow "0-9"
+
+        if (isBattleRopes) {
+          payload.sets = Number(sets);
+          payload.reps = Number(reps);
+          payload.selectedOptions = selectedOptions;
+        }
       } else {
         payload.sets = Number(sets);
         if (isSeparateSets) {
@@ -141,7 +157,7 @@ export default function LogWorkoutModal() {
           <Text style={[styles.subtitle, { color: colors.textMuted }]}>Record your stats for today.</Text>
         </View>
 
-        {isCardio ? (
+        {isCardio && !isBattleRopes ? (
           <>
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Speed Range (mph/kmh)</Text>
@@ -169,6 +185,34 @@ export default function LogWorkoutModal() {
           </>
         ) : (
           <>
+            {exerciseDef?.options && (
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Technique</Text>
+                <View style={styles.optionsGrid}>
+                  {exerciseDef.options.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.optionChip,
+                        { borderColor: colors.border },
+                        selectedOptions.includes(option) && { backgroundColor: accentColor, borderColor: accentColor }
+                      ]}
+                      onPress={() => toggleOption(option)}
+                    >
+                      <MaterialCommunityIcons
+                        name={selectedOptions.includes(option) ? "checkbox-marked" : "checkbox-blank-outline"}
+                        size={20}
+                        color={selectedOptions.includes(option) ? "#fff" : colors.textMuted}
+                      />
+                      <Text style={[styles.optionText, { color: selectedOptions.includes(option) ? "#fff" : colors.text }]}>
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Total Sets</Text>
               <TextInput
@@ -179,43 +223,43 @@ export default function LogWorkoutModal() {
               />
             </View>
 
-            <View style={styles.toggleRow}>
-              <Text style={[styles.toggleLabel, { color: colors.text }]}>Input data for each set separately?</Text>
-              <Switch
-                value={isSeparateSets}
-                onValueChange={setIsSeparateSets}
-                trackColor={{ false: '#dcdde1', true: accentColor }}
-                thumbColor={'#ffffff'}
-              />
-            </View>
+            {!isBattleRopes && (
+              <View style={styles.toggleRow}>
+                <Text style={[styles.toggleLabel, { color: colors.text }]}>Input data for each set separately?</Text>
+                <Switch
+                  value={isSeparateSets}
+                  onValueChange={setIsSeparateSets}
+                  trackColor={{ false: '#dcdde1', true: accentColor }}
+                  thumbColor={'#ffffff'}
+                />
+              </View>
+            )}
 
             {!isSeparateSets ? (
-              <>
-                <View style={styles.row}>
-                  <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
-                    <Text style={[styles.label, { color: colors.text }]}>Reps per set</Text>
+              <View style={styles.row}>
+                <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
+                  <Text style={[styles.label, { color: colors.text }]}>Reps per set</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]}
+                    keyboardType="numeric"
+                    value={reps}
+                    onChangeText={setReps}
+                  />
+                </View>
+                {!isBodyweight && !isBattleRopes && (
+                  <View style={[styles.formGroup, { flex: 1, marginLeft: 10 }]}>
+                    <Text style={[styles.label, { color: colors.text }]}>Weight</Text>
                     <TextInput
                       style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]}
+                      placeholder="e.g. 100"
+                      placeholderTextColor={colors.textMuted}
                       keyboardType="numeric"
-                      value={reps}
-                      onChangeText={setReps}
+                      value={weight}
+                      onChangeText={setWeight}
                     />
                   </View>
-                  {!isBodyweight && (
-                    <View style={[styles.formGroup, { flex: 1, marginLeft: 10 }]}>
-                      <Text style={[styles.label, { color: colors.text }]}>Weight</Text>
-                      <TextInput
-                        style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: accentColor }]}
-                        placeholder="e.g. 100"
-                        placeholderTextColor={colors.textMuted}
-                        keyboardType="numeric"
-                        value={weight}
-                        onChangeText={setWeight}
-                      />
-                    </View>
-                  )}
-                </View>
-              </>
+                )}
+              </View>
             ) : (
               <View style={styles.separateSetsContainer}>
                 {setsData.map((setData, index) => (
@@ -231,7 +275,7 @@ export default function LogWorkoutModal() {
                           onChangeText={(v) => updateSetData(index, 'reps', v)}
                         />
                       </View>
-                      {!isBodyweight && (
+                      {!isBodyweight && !isBattleRopes && (
                         <View style={[styles.formGroup, { flex: 1, marginLeft: 10, marginBottom: 0 }]}>
                           <Text style={[styles.label, { color: colors.textMuted, fontSize: 12 }]}>Weight</Text>
                           <TextInput
@@ -408,5 +452,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent', // Match border radius tricks
     borderRadius: 8,
+  },
+  optionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  optionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginRight: 10,
+    marginBottom: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  optionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
   }
 });

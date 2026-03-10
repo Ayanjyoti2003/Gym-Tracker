@@ -16,7 +16,7 @@ export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) =>
 
       Recent Workout Logs (last 5 sessions):
       ${JSON.stringify(recentLogs, null, 2)}
-      (Note: "type: 'cardio'" exercises will have 'speed' and 'incline' string ranges instead of sets/reps/weight; "setsData" if present contains specific reps/weight for each set)
+      (Note: "type: 'cardio'" exercises will have 'speed' and 'incline' string ranges instead of sets/reps/weight; "setsData" if present contains specific reps/weight for each set; "selectedOptions" if present contains specific techniques or variations used)
 
       Based on this data, please provide:
       1. An estimated total calorie burn for the most recent session using standard MET values for the exercises based on the user's weight and the execution time (durationMins). Take into account the speed and incline values if present.
@@ -54,7 +54,7 @@ export const chatWithGemini = async (message: string, context: { profile: any, r
       
       Recent Workouts (Last 5):
       ${JSON.stringify(context.recentLogs, null, 2)}
-      (Note: "type: 'cardio'" exercises use 'speed' and 'incline' string ranges; "setsData" if present contains specific reps/weight for each set)
+      (Note: "type: 'cardio'" exercises use 'speed' and 'incline' string ranges; "setsData" if present contains specific reps/weight for each set; "selectedOptions" if present contains specific techniques or variations used)
       
       Always tailor your advice specifically to their goals, their recent performance, and the equipment they actually have available in their gym.
     `;
@@ -95,7 +95,7 @@ export const generateCustomRoutine = async (profileData: any, recentLogs: any[],
 
       Recent Workout Logs (Historical Data):
       ${JSON.stringify(recentLogs, null, 2)}
-      (Note: "setsData" if present contains specific reps/weight for each set)
+      (Note: "setsData" if present contains specific reps/weight for each set; "selectedOptions" if present contains specific techniques or variations used)
       
       INSTRUCTIONS:
       1. Carefully assess their Gym Experience and their Recent Break/Gap.

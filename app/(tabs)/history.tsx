@@ -19,6 +19,7 @@ interface WorkoutLog {
   date: string;
   timestamp: number;
   setsData?: { reps: number; weight: number }[];
+  selectedOptions?: string[];
 }
 
 export default function HistoryScreen() {
@@ -65,9 +66,16 @@ export default function HistoryScreen() {
         </View>
         <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
           <Text style={styles.statLabel}>WEIGHT</Text>
-          <Text style={[styles.statValue, { color: colors.text }]}>{item.weight} <Text style={{ fontSize: 12 }}>lbs</Text></Text>
+          <Text style={[styles.statValue, { color: colors.text }]}>{item.weight} <Text style={{ fontSize: 12 }}>{item.weight > 0 ? 'lbs' : ''}</Text></Text>
         </View>
       </View>
+
+      {item.selectedOptions && item.selectedOptions.length > 0 && (
+        <View style={styles.optionsContainer}>
+          <Text style={[styles.optionsLabel, { color: colors.textMuted }]}>Techniques: </Text>
+          <Text style={[styles.optionsText, { color: colors.text }]}>{item.selectedOptions.join(', ')}</Text>
+        </View>
+      )}
 
       {item.setsData && item.setsData.length > 0 && (
         <View style={styles.setsDataContainer}>
@@ -297,6 +305,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   setsDataValue: {
+    fontSize: 13,
+  },
+  optionsContainer: {
+    marginTop: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  optionsLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  optionsText: {
     fontSize: 13,
   }
 });
