@@ -189,12 +189,16 @@ export default function HistoryScreen() {
 
     sortedLogs.forEach(log => {
       let vol = 0;
-      if (log.setsData && log.setsData.length > 0) {
-        vol = log.setsData.reduce((acc, curr) => acc + (curr.reps * (curr.weight || 1)), 0);
-      } else {
-        vol = log.sets * log.reps * (log.weight || 1); // fallback to 1 for bodyweight so it graphs something
+      if (log.type !== 'cardio') {
+        if (log.setsData && log.setsData.length > 0) {
+          vol = log.setsData.reduce((acc, curr) => acc + ((curr.reps || 0) * (curr.weight || 1)), 0);
+        } else {
+          vol = (log.sets || 0) * (log.reps || 0) * (log.weight || 1); // fallback to 1 for bodyweight so it graphs something
+        }
       }
-      volumeByDate[log.date] = (volumeByDate[log.date] || 0) + vol;
+      if (!isNaN(vol)) {
+        volumeByDate[log.date] = (volumeByDate[log.date] || 0) + vol;
+      }
     });
 
     const dates = Object.keys(volumeByDate);

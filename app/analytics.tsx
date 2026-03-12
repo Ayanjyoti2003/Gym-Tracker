@@ -106,10 +106,12 @@ export default function AnalyticsScreen() {
 
     filteredLogs.forEach(log => {
       totalDuration += log.durationMins || 0;
-      if (log.setsData) {
-        log.setsData.forEach(s => totalVolume += (s.reps * (s.weight > 0 ? s.weight : 1)));
-      } else {
-        totalVolume += (log.sets * log.reps * (log.weight > 0 ? log.weight : 1));
+      if (log.type !== 'cardio') {
+        if (log.setsData) {
+          log.setsData.forEach(s => totalVolume += ((s.reps || 0) * (s.weight > 0 ? s.weight : 1)));
+        } else {
+          totalVolume += ((log.sets || 0) * (log.reps || 0) * (log.weight > 0 ? log.weight : 1));
+        }
       }
     });
 
@@ -185,7 +187,7 @@ export default function AnalyticsScreen() {
         const labels: string[] = [];
         const data: number[] = [];
         exLogs.forEach(l => {
-          const maxWeight = l.setsData ? Math.max(...l.setsData.map(s => s.weight)) : l.weight;
+          const maxWeight = l.setsData && l.setsData.length > 0 ? Math.max(...l.setsData.map(s => s.weight || 0)) : (l.weight || 0);
           labels.push(l.date.slice(-5)); // MM-DD
           data.push(maxWeight > 0 ? maxWeight : 0);
         });
@@ -204,12 +206,16 @@ export default function AnalyticsScreen() {
     filteredLogs.forEach(log => {
       const muscle = mapExerciseIdToMuscle(log.exerciseName || log.exerciseId);
       let vol = 0;
-      if (log.setsData) {
-        log.setsData.forEach(s => vol += (s.reps * (s.weight > 0 ? s.weight : 1)));
-      } else {
-        vol += (log.sets * log.reps * (log.weight > 0 ? log.weight : 1));
+      if (log.type !== 'cardio') {
+        if (log.setsData) {
+          log.setsData.forEach(s => vol += ((s.reps || 0) * (s.weight > 0 ? s.weight : 1)));
+        } else {
+          vol += ((log.sets || 0) * (log.reps || 0) * (log.weight > 0 ? log.weight : 1));
+        }
       }
-      muscleVolume[muscle] = (muscleVolume[muscle] || 0) + vol;
+      if (!isNaN(vol)) {
+        muscleVolume[muscle] = (muscleVolume[muscle] || 0) + vol;
+      }
     });
 
     const definedColors = ['#ff4757', '#ffa502', '#2ed573', '#1e90ff', '#9b59b6', '#aaaaaa'];
@@ -226,7 +232,8 @@ export default function AnalyticsScreen() {
     const records: { [key: string]: number } = {};
     // Calculate PRs out of ALL logs, regardless of filter
     logs.forEach(l => {
-      const maxWeight = l.setsData ? Math.max(...l.setsData.map(s => s.weight)) : l.weight;
+      if (l.type === 'cardio') return;
+      const maxWeight = l.setsData && l.setsData.length > 0 ? Math.max(...l.setsData.map(s => s.weight || 0)) : (l.weight || 0);
       if (maxWeight > 0) {
         if (!records[l.exerciseName] || maxWeight > records[l.exerciseName]) {
           records[l.exerciseName] = maxWeight;
