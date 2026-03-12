@@ -2,6 +2,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { chatWithGemini } from '@/lib/genai';
 import { dualStorage } from '@/lib/storage';
+import { db } from '../../firebaseConfig';
+import { collection, query, orderBy, getDocs, setDoc, doc } from 'firebase/firestore';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -31,6 +33,7 @@ export default function AiChatScreen() {
   // Context state
   const [userProfile, setUserProfile] = useState<any>({});
   const [recentWorkouts, setRecentWorkouts] = useState<any[]>([]);
+  const [analyticsSummary, setAnalyticsSummary] = useState<any>({});
   const [gymConfig, setGymConfig] = useState<string[]>([]);
   const [weightUnit, setWeightUnit] = useState<string>('kg');
 
@@ -56,6 +59,44 @@ export default function AiChatScreen() {
     const allWorkouts = await dualStorage.getAllLocal('workouts');
     allWorkouts.sort((a, b) => b.timestamp - a.timestamp);
     setRecentWorkouts(allWorkouts.slice(0, 5));
+
+    // Compile quick analytics for the AI
+    let totalVol = 0;
+    let totalMins = 0;
+    const prs: Record<string, number> = {};
+    allWorkouts.forEach(log => {
+      totalMins += log.durationMins || 0;
+      if (log.type !== 'cardio') {
+         const maxW = log.setsData && log.setsData.length > 0 ? Math.max(...log.setsData.map((s: any) => s.weight || 0)) : (log.weight || 0);
+         if (maxW > 0 && (!prs[log.exerciseName] || maxW > prs[log.exerciseName])) {
+           prs[log.exerciseName] = maxW;
+         }
+         if (log.setsData) {
+            log.setsData.forEach((s: any) => totalVol += ((s.reps || 0) * (s.weight > 0 ? s.weight : 1)));
+         } else {
+            totalVol += ((log.sets || 0) * (log.reps || 0) * (log.weight > 0 ? log.weight : 1));
+         }
+      }
+    });
+    setAnalyticsSummary({
+      totalWorkoutsLogged: allWorkouts.length,
+      totalVolumeLifted: totalVol,
+      totalMinutesWorkedOut: totalMins,
+      personalRecords: prs
+    });
+
+    // Load Chat History from Firestore
+    try {
+      const q = query(collection(db, 'users', user.uid, 'ai_chats'), orderBy('timestamp', 'asc'));
+      const snapshot = await getDocs(q);
+      const loadedMessages: Message[] = [];
+      snapshot.forEach(docSnap => loadedMessages.push(docSnap.data() as Message));
+      if (loadedMessages.length > 0) {
+        setMessages(loadedMessages);
+      }
+    } catch (e) {
+      console.log('Failed to fetch AI chat history', e);
+    }
   };
 
   const sendMessage = async () => {
@@ -75,6 +116,9 @@ export default function AiChatScreen() {
     setMessages(prev => [...prev, userMessage]);
     setLoading(true);
 
+    // Save user message to firebase silently
+    setDoc(doc(db, 'users', user.uid, 'ai_chats', userMessage.id), userMessage).catch(console.error);
+
     // 2. Format history for Gemini API
     const historyForGemini = messages
       .filter(m => m.id !== 'welcome_msg') // Skip the generic welcome
@@ -86,7 +130,7 @@ export default function AiChatScreen() {
     // 3. Make API Call
     const aiResponseText = await chatWithGemini(
       userMessageText,
-      { profile: userProfile, recentLogs: recentWorkouts, equipment: gymConfig, weightUnit },
+      { profile: userProfile, recentLogs: recentWorkouts, analytics: analyticsSummary, equipment: gymConfig, weightUnit },
       historyForGemini
     );
 
@@ -100,6 +144,9 @@ export default function AiChatScreen() {
 
     setMessages(prev => [...prev, aiMessage]);
     setLoading(false);
+
+    // Save AI response to firebase silently
+    setDoc(doc(db, 'users', user.uid, 'ai_chats', aiMessage.id), aiMessage).catch(console.error);
   };
 
   const renderMessage = ({ item }: { item: Message }) => {

@@ -10,6 +10,7 @@ export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) =>
 
       User Profile:
       Name: ${profileData?.name || 'Unknown'}
+      Gender: ${profileData?.gender || 'Unknown'}
       Height: ${profileData?.height || 'Unknown'} cm
       Weight: ${profileData?.weight || 'Unknown'} kg
       Goals: ${profileData?.goals || 'General fitness'}
@@ -38,7 +39,7 @@ export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) =>
     return "I couldn't generate insights right now. Double-check your API key configuration in the .env file and ensure you have an active network connection!";
   }
 };
-export const chatWithGemini = async (message: string, context: { profile: any, recentLogs: any[], equipment: string[], weightUnit: string }, chatHistory: { role: string, parts: [{ text: string }] }[] = []) => {
+export const chatWithGemini = async (message: string, context: { profile: any, recentLogs: any[], analytics: any, equipment: string[], weightUnit: string }, chatHistory: { role: string, parts: [{ text: string }] }[] = []) => {
   try {
     const systemInstruction = `
       You are Gym Tracker AI, an expert, incredibly encouraging personal trainer and nutritionist built right into the user's mobile app.
@@ -46,6 +47,7 @@ export const chatWithGemini = async (message: string, context: { profile: any, r
       
       USER CONTEXT:
       Name: ${context.profile?.name || 'Unknown'}
+      Gender: ${context.profile?.gender || 'Unknown'}
       Height: ${context.profile?.height || 'Unknown'} cm
       Weight: ${context.profile?.weight || 'Unknown'} ${context.weightUnit}
       Goals: ${context.profile?.goals || 'General fitness'}
@@ -56,7 +58,12 @@ export const chatWithGemini = async (message: string, context: { profile: any, r
       ${JSON.stringify(context.recentLogs, null, 2)}
       (Note: "type: 'cardio'" exercises use 'speed' and 'incline' string ranges; "setsData" if present contains specific reps/weight for each set; "selectedOptions" if present contains specific techniques or variations used)
       
+      Lifetime Analytics Summary:
+      ${JSON.stringify(context.analytics, null, 2)}
+      
       Always tailor your advice specifically to their goals, their recent performance, and the equipment they actually have available in their gym.
+      
+      CRITICAL RULE: Check their height and weight to estimate their BMI. If they appear to be a newbie/rookie (look at their history and workout data) AND their BMI indicates they are overweight or obese, heavily emphasize starting with about 30 minutes of daily cardio (like Treadmill, walking, etc.) for the first 1-2 months so their body can adjust before jumping into heavy weightlifting routines.
     `;
 
     // We format the history for the 'contents' array as required by the new @google/genai SDK
@@ -86,6 +93,7 @@ export const generateCustomRoutine = async (profileData: any, recentLogs: any[],
       
       User Profile:
       - Name: ${profileData?.name || 'User'}
+      - Gender: ${profileData?.gender || 'Unknown'}
       - Height: ${profileData?.height || 'Unknown'} cm
       - Weight: ${profileData?.weight || 'Unknown'} ${weightUnit}
       - Preferred Weight Unit: ${weightUnit}
@@ -98,10 +106,11 @@ export const generateCustomRoutine = async (profileData: any, recentLogs: any[],
       (Note: "setsData" if present contains specific reps/weight for each set; "selectedOptions" if present contains specific techniques or variations used)
       
       INSTRUCTIONS:
-      1. Carefully assess their Gym Experience and their Recent Break/Gap.
+      1. Carefully assess their Gym Experience, Recent Break/Gap, and Gender.
       2. If they are a beginner or have a significant recent break, ALWAYS suggest a newbie-friendly, lower-intensity routine to help them (re)start safely.
-      3. Explicitly suggest specific starting weights (e.g., "10 kg", "Bodyweight", "Adjust based on feel, maybe 5 kg dumbbells") for EACH exercise. Use their past workout history to inform this if available. Otherwise, use your assessment of their experience and gap to estimate a safe starting point.
-      4. Briefly explain why this routine was chosen overall, and provide a clear reason and benefit for EACH specific exercise.
+      3. CRITICAL: Calculate their approximate BMI using their height and weight. If they are a beginner/rookie AND their BMI indicates they are overweight or obese, their routine MUST heavily focus on about 30 minutes of daily cardio to let their body adjust for the first 1-2 months before aggressive weightlifting.
+      4. Explicitly suggest specific starting weights (e.g., "10 kg", "Bodyweight", "Adjust based on feel, maybe 5 kg dumbbells") for EACH exercise. Use their past workout history to inform this if available. Otherwise, use your assessment of their experience and gap to estimate a safe starting point.
+      5. Briefly explain why this routine was chosen overall, and provide a clear reason and benefit for EACH specific exercise.
       
       You MUST respond ONLY with a valid, clean JSON object matching exactly this schema, with NO markdown formatting:
       {

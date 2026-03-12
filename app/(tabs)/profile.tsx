@@ -37,6 +37,8 @@ export default function ProfileScreen() {
   const [gapValue, setGapValue] = useState('');
   const [gapUnit, setGapUnit] = useState('none');
   
+  const [gender, setGender] = useState('Male');
+  
   const [avatar, setAvatar] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,6 +58,7 @@ export default function ProfileScreen() {
       setExperienceUnit(profileData.experienceUnit || 'months');
       setGapValue(profileData.gapValue || '');
       setGapUnit(profileData.gapUnit || 'none');
+      setGender(profileData.gender || 'Male');
       setAvatar(profileData.avatar || DEFAULT_AVATARS[0]);
     } else {
       setAvatar(DEFAULT_AVATARS[0]);
@@ -77,6 +80,7 @@ export default function ProfileScreen() {
         experienceUnit,
         gapValue,
         gapUnit,
+        gender,
         avatar,
       }, user.uid);
       setIsEditing(false); // Close edit mode after saving
@@ -113,7 +117,7 @@ export default function ProfileScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={100}
     >
-      <ScrollView keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
         
         {isNewUser && (
           <View style={[styles.welcomeBubble, { backgroundColor: colors.cardElevated, borderColor: accentColor }]}>
@@ -222,6 +226,22 @@ export default function ProfileScreen() {
               />
             </View>
 
+            {/* Gender Group */}
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.textMuted }]}>Gender</Text>
+              <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.cardElevated }]}>
+                {['Male', 'Female', 'Others'].map(gen => (
+                  <TouchableOpacity 
+                    key={gen} 
+                    style={[styles.pickerBtn, gender === gen && { backgroundColor: accentColor }]}
+                    onPress={() => setGender(gen)}
+                  >
+                    <Text style={[styles.pickerBtnText, { color: gender === gen ? '#fff' : colors.textMuted }]}>{gen}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
             {/* Experience Group */}
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.textMuted }]}>Gym Experience</Text>
@@ -310,6 +330,11 @@ export default function ProfileScreen() {
               <Text style={[styles.infoValue, { color: colors.text }]}>{goals || 'Not set'}</Text>
             </View>
 
+            <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Gender</Text>
+              <Text style={[styles.infoValue, { color: colors.text }]}>{gender}</Text>
+            </View>
+
             <View style={styles.row}>
               <View style={[styles.infoCard, { flex: 1, marginRight: 10, backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Experience</Text>
@@ -344,7 +369,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121212',
-    padding: 20,
   },
   welcomeBubble: {
     flexDirection: 'row',
