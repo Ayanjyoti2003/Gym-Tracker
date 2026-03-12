@@ -31,6 +31,7 @@ export default function AnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
   const [filter, setFilter] = useState<TimeFilter>('month');
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
 
   // Computed data states
   const [stats, setStats] = useState({
@@ -66,6 +67,11 @@ export default function AnalyticsScreen() {
   const fetchLogs = async () => {
     if (!user) return;
     setLoading(true);
+
+    // Fetch user preferences for weight unit
+    const prefs = await dualStorage.getItem('data', 'preferences', user.uid);
+    if (prefs?.weightUnit) setWeightUnit(prefs.weightUnit);
+
     // Fetch all logs to allow fast client-side filtering
     const allWorkouts = await dualStorage.getAllLocal('workouts');
     allWorkouts.sort((a: any, b: any) => a.timestamp - b.timestamp); // Chronological
@@ -381,7 +387,7 @@ export default function AnalyticsScreen() {
             Object.keys(prs).sort((a,b) => prs[b] - prs[a]).slice(0, 8).map((ex, idx) => (
               <View key={idx} style={[styles.listItem, idx > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
                 <Text style={[styles.listName, { color: colors.text }]}>{ex}</Text>
-                <Text style={[styles.listVal, { color: accentColor }]}>{prs[ex]} lbs</Text>
+                <Text style={[styles.listVal, { color: accentColor }]}>{prs[ex]} {weightUnit}</Text>
               </View>
             ))
           ) : (

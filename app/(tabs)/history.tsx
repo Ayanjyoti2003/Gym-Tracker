@@ -33,6 +33,7 @@ export default function HistoryScreen() {
 
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
 
   const [pendingDeletes, setPendingDeletes] = useState<{ id: string, timeoutId: ReturnType<typeof setTimeout> }[]>([]);
 
@@ -51,6 +52,10 @@ export default function HistoryScreen() {
   const fetchHistory = async () => {
     if (!user) return;
     setLoading(true);
+
+    // Load weight unit pref
+    const prefs = await dualStorage.getItem('data', 'preferences', user.uid);
+    if (prefs?.weightUnit) setWeightUnit(prefs.weightUnit);
 
     if (isFiltering && filterStartDate && filterEndDate) {
       const remoteWorkouts = await dualStorage.getWorkoutsByDateRange(user.uid, filterStartDate, filterEndDate);
@@ -148,7 +153,7 @@ export default function HistoryScreen() {
                 {item.type !== 'bodyweight' && item.exerciseId !== 'battle_ropes' && (
                   <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
                     <Text style={styles.statLabel}>WEIGHT</Text>
-                    <Text style={[styles.statValue, { color: colors.text }]}>{item.weight} <Text style={{ fontSize: 12 }}>{item.weight > 0 ? 'lbs' : ''}</Text></Text>
+                    <Text style={[styles.statValue, { color: colors.text }]}>{item.weight} <Text style={{ fontSize: 12 }}>{item.weight > 0 ? weightUnit : ''}</Text></Text>
                   </View>
                 )}
               </>
@@ -167,7 +172,7 @@ export default function HistoryScreen() {
               {item.setsData.map((s, idx) => (
                 <View key={idx} style={styles.setsDataRow}>
                   <Text style={[styles.setsDataLabel, { color: colors.textMuted }]}>Set {idx + 1}</Text>
-                  <Text style={[styles.setsDataValue, { color: colors.textMuted }]}>{s.reps} reps {s.weight > 0 ? `× ${s.weight} lbs` : ''}</Text>
+                  <Text style={[styles.setsDataValue, { color: colors.textMuted }]}>{s.reps} reps {s.weight > 0 ? `× ${s.weight} ${weightUnit}` : ''}</Text>
                 </View>
               ))}
             </View>
@@ -217,7 +222,7 @@ export default function HistoryScreen() {
           strokeWidth: 3
         }
       ],
-      legend: ["Total Volume (lbs)"]
+      legend: [`Total Volume (${weightUnit})`]
     };
   };
 
