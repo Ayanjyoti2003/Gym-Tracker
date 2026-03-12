@@ -81,7 +81,7 @@ export default function LogWorkoutModal() {
     if (!user) return;
 
     // Validation
-    if (!isCardio && !isBodyweight && !weight) {
+    if (!isCardio && !isBodyweight && !isSeparateSets && !weight) {
       Alert.alert('Missing Info', 'Please enter the weight used.');
       return;
     }

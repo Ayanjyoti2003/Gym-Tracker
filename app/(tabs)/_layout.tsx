@@ -44,6 +44,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="ai-chat"
+        options={{
+          title: 'AI Coach',
+          tabBarIcon: ({ color }) => <MaterialCommunityIcons name="robot" size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="history"
         options={{
           title: 'History',
@@ -55,20 +62,6 @@ export default function TabLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color }) => <MaterialCommunityIcons name="account" size={24} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="ai-chat"
-        options={{
-          title: 'AI Coach',
-          tabBarIcon: ({ color }) => <MaterialCommunityIcons name="robot" size={24} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color }) => <MaterialCommunityIcons name="cog" size={24} color={color} />,
         }}
       />
     </Tabs>

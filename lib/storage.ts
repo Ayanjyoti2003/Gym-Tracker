@@ -83,12 +83,77 @@ export const dualStorage = {
       const collectionKeys = allKeys.filter(key => key.startsWith(`@gym_tracker_${collectionName}_`));
       
       const items = await AsyncStorage.multiGet(collectionKeys);
-      return items.map(([key, value]) => ({
+      const parsedItems = items.map(([key, value]) => ({
         id: key.replace(`@gym_tracker_${collectionName}_`, ''),
         ...(value ? JSON.parse(value) : {})
       }));
+
+      // 30-day cleanup for workouts
+      if (collectionName === 'workouts') {
+        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        const keysToRemove: string[] = [];
+        const validItems = parsedItems.filter(item => {
+          if (item.timestamp && item.timestamp < thirtyDaysAgo) {
+            keysToRemove.push(`@gym_tracker_workouts_${item.id}`);
+            return false;
+          }
+          return true;
+        });
+
+        if (keysToRemove.length > 0) {
+          await AsyncStorage.multiRemove(keysToRemove);
+          console.log(`[Storage] Cleaned up ${keysToRemove.length} older than 30 days.`);
+        }
+        return validItems;
+      }
+
+      return parsedItems;
     } catch (e) {
       console.error(`[Storage] Failed to getAllLocal for ${collectionName}:`, e);
+      return [];
+    }
+  },
+
+  /**
+   * Soft deletes a workout by dropping it locally and flagging it in Firebase.
+   */
+  async softDeleteWorkout(id: string, userId: string) {
+    try {
+      const localKey = `@gym_tracker_workouts_${id}`;
+      await AsyncStorage.removeItem(localKey);
+      
+      if (userId) {
+        const docRef = doc(db, 'users', userId, 'workouts', id);
+        await setDoc(docRef, { deletedAt: new Date().toISOString() }, { merge: true });
+      }
+    } catch (e) {
+      console.error(`[Storage] Failed to soft delete workout ${id}:`, e);
+    }
+  },
+
+  /**
+   * Queries Firestore for workouts in a date range (for filtering history).
+   */
+  async getWorkoutsByDateRange(userId: string, startDate: string, endDate: string) {
+    if (!userId) return [];
+    try {
+      const colRef = collection(db, 'users', userId, 'workouts');
+      const q = query(
+        colRef, 
+        where('date', '>=', startDate),
+        where('date', '<=', endDate)
+      );
+      const snapshot = await getDocs(q);
+      const remoteData: any[] = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (!data.deletedAt) {
+          remoteData.push({ id: doc.id, ...data });
+        }
+      });
+      return remoteData;
+    } catch (e) {
+      console.error(`[Storage] Failed to fetch workouts by date range:`, e);
       return [];
     }
   },

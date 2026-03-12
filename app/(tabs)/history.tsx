@@ -3,8 +3,10 @@ import { useTheme } from '@/context/ThemeContext';
 import { dualStorage } from '@/lib/storage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, SafeAreaView, StyleSheet, Text, View, Modal, TextInput, TouchableOpacity } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
+import { Swipeable } from 'react-native-gesture-handler';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -12,9 +14,12 @@ interface WorkoutLog {
   id: string;
   exerciseId: string;
   exerciseName: string;
+  type?: 'weight' | 'cardio' | 'bodyweight';
   sets: number;
   reps: number;
   weight: number;
+  speed?: string;
+  incline?: string;
   durationMins: number;
   date: string;
   timestamp: number;
@@ -29,66 +34,148 @@ export default function HistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
 
+  const [pendingDeletes, setPendingDeletes] = useState<{ id: string, timeoutId: ReturnType<typeof setTimeout> }[]>([]);
+
+  const [isFilterModalVisible, setFilterModalVisible] = useState(false);
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [isFiltering, setIsFiltering] = useState(false);
+
   // Use useFocusEffect instead of useEffect to reload data every time the tab is visited
   useFocusEffect(
     useCallback(() => {
       fetchHistory();
-    }, [user])
+    }, [user, isFiltering, filterStartDate, filterEndDate])
   );
 
   const fetchHistory = async () => {
     if (!user) return;
     setLoading(true);
 
-    // Fetch from dualStorage
-    const allWorkouts = await dualStorage.getAllLocal('workouts');
-
-    // Sort descending by timestamp (newest first)
-    allWorkouts.sort((a, b) => b.timestamp - a.timestamp);
-    setLogs(allWorkouts as WorkoutLog[]);
+    if (isFiltering && filterStartDate && filterEndDate) {
+      const remoteWorkouts = await dualStorage.getWorkoutsByDateRange(user.uid, filterStartDate, filterEndDate);
+      remoteWorkouts.sort((a: any, b: any) => b.timestamp - a.timestamp);
+      setLogs(remoteWorkouts as WorkoutLog[]);
+    } else {
+      const allWorkouts = await dualStorage.getAllLocal('workouts');
+      allWorkouts.sort((a: any, b: any) => b.timestamp - a.timestamp);
+      setLogs(allWorkouts as WorkoutLog[]);
+    }
     setLoading(false);
   };
 
-  const renderLogItem = ({ item }: { item: WorkoutLog }) => (
-    <View style={[styles.logCard, { backgroundColor: colors.card, borderLeftColor: accentColor }]}>
-      <View style={styles.logHeader}>
-        <Text style={[styles.logTitle, { color: colors.text }]}>{item.exerciseName}</Text>
-        <Text style={[styles.logDate, { color: colors.textMuted }]}>{item.date}</Text>
-      </View>
-      <View style={styles.logStats}>
-        <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
-          <Text style={styles.statLabel}>SETS</Text>
-          <Text style={[styles.statValue, { color: colors.text }]}>{item.sets}</Text>
-        </View>
-        <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
-          <Text style={styles.statLabel}>REPS</Text>
-          <Text style={[styles.statValue, { color: colors.text }]}>{item.reps}</Text>
-        </View>
-        <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
-          <Text style={styles.statLabel}>WEIGHT</Text>
-          <Text style={[styles.statValue, { color: colors.text }]}>{item.weight} <Text style={{ fontSize: 12 }}>{item.weight > 0 ? 'lbs' : ''}</Text></Text>
-        </View>
-      </View>
+  const handleDeleteTrigger = (id: string) => {
+    const timeoutId = setTimeout(() => {
+      commitDelete(id);
+    }, 20000);
+    setPendingDeletes(prev => [...prev, { id, timeoutId }]);
+  };
 
-      {item.selectedOptions && item.selectedOptions.length > 0 && (
-        <View style={styles.optionsContainer}>
-          <Text style={[styles.optionsLabel, { color: colors.textMuted }]}>Techniques: </Text>
-          <Text style={[styles.optionsText, { color: colors.text }]}>{item.selectedOptions.join(', ')}</Text>
-        </View>
-      )}
+  const undoDelete = (id: string, timeoutId: ReturnType<typeof setTimeout>) => {
+    clearTimeout(timeoutId);
+    setPendingDeletes(prev => prev.filter(d => d.id !== id));
+  };
 
-      {item.setsData && item.setsData.length > 0 && (
-        <View style={styles.setsDataContainer}>
-          {item.setsData.map((s, idx) => (
-            <View key={idx} style={styles.setsDataRow}>
-              <Text style={[styles.setsDataLabel, { color: colors.textMuted }]}>Set {idx + 1}</Text>
-              <Text style={[styles.setsDataValue, { color: colors.textMuted }]}>{s.reps} reps {s.weight > 0 ? `× ${s.weight} lbs` : ''}</Text>
+  const commitDelete = async (id: string) => {
+    setPendingDeletes(prev => prev.filter(d => d.id !== id));
+    setLogs(prev => prev.filter(l => l.id !== id));
+    if (user) {
+      await dualStorage.softDeleteWorkout(id, user.uid);
+    }
+  };
+
+  const renderLeftActions = () => {
+    return (
+      <View style={{ backgroundColor: '#ff4757', justifyContent: 'center', alignItems: 'center', width: 80, borderRadius: 12, marginBottom: 16 }}>
+        <MaterialCommunityIcons name="delete" size={32} color="#fff" />
+      </View>
+    );
+  };
+
+  const clearFilter = () => {
+    setIsFiltering(false);
+    setFilterStartDate('');
+    setFilterEndDate('');
+  };
+
+  const applyFilter = () => {
+    setIsFiltering(true);
+    setFilterModalVisible(false);
+    fetchHistory();
+  };
+
+  const renderLogItem = ({ item }: { item: WorkoutLog }) => {
+    if (pendingDeletes.find(d => d.id === item.id)) return null;
+
+    return (
+      <Swipeable
+        renderLeftActions={renderLeftActions}
+        onSwipeableOpen={(direction) => {
+           if (direction === 'left') handleDeleteTrigger(item.id);
+        }}
+      >
+        <View style={[styles.logCard, { backgroundColor: colors.card, borderLeftColor: accentColor }]}>
+          <View style={styles.logHeader}>
+            <Text style={[styles.logTitle, { color: colors.text }]}>{item.exerciseName}</Text>
+            <Text style={[styles.logDate, { color: colors.textMuted }]}>{item.date}</Text>
+          </View>
+          <View style={styles.logStats}>
+            {item.type === 'cardio' && item.exerciseId !== 'battle_ropes' ? (
+              <>
+                <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
+                  <Text style={styles.statLabel}>TIME</Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{item.durationMins} <Text style={{ fontSize: 12 }}>min</Text></Text>
+                </View>
+                <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
+                  <Text style={styles.statLabel}>SPEED</Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{item.speed || '-'}</Text>
+                </View>
+                <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
+                  <Text style={styles.statLabel}>INCLINE</Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{item.incline || '-'}</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
+                  <Text style={styles.statLabel}>SETS</Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{item.sets}</Text>
+                </View>
+                <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
+                  <Text style={styles.statLabel}>REPS</Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{item.reps || '-'}</Text>
+                </View>
+                {item.type !== 'bodyweight' && item.exerciseId !== 'battle_ropes' && (
+                  <View style={[styles.statBox, { backgroundColor: colors.cardElevated }]}>
+                    <Text style={styles.statLabel}>WEIGHT</Text>
+                    <Text style={[styles.statValue, { color: colors.text }]}>{item.weight} <Text style={{ fontSize: 12 }}>{item.weight > 0 ? 'lbs' : ''}</Text></Text>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+
+          {item.selectedOptions && item.selectedOptions.length > 0 && (
+            <View style={styles.optionsContainer}>
+              <Text style={[styles.optionsLabel, { color: colors.textMuted }]}>Techniques: </Text>
+              <Text style={[styles.optionsText, { color: colors.text }]}>{item.selectedOptions.join(', ')}</Text>
             </View>
-          ))}
+          )}
+
+          {item.setsData && item.setsData.length > 0 && (
+            <View style={styles.setsDataContainer}>
+              {item.setsData.map((s, idx) => (
+                <View key={idx} style={styles.setsDataRow}>
+                  <Text style={[styles.setsDataLabel, { color: colors.textMuted }]}>Set {idx + 1}</Text>
+                  <Text style={[styles.setsDataValue, { color: colors.textMuted }]}>{s.reps} reps {s.weight > 0 ? `× ${s.weight} lbs` : ''}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
-      )}
-    </View>
-  );
+      </Swipeable>
+    );
+  };
 
   // Prepare Chart Data based on total volume (sets * reps * weight) per day over the last 7 active days
   const prepareChartData = () => {
@@ -155,9 +242,27 @@ export default function HistoryScreen() {
           </View>
         }
         ListHeaderComponent={
-          chartData ? (
-            <View style={styles.chartContainer}>
-              <Text style={[styles.chartTitle, { color: colors.text }]}>Performance Growth</Text>
+          <>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: chartData ? 10 : 20 }}>
+               <Text style={[styles.headerTitle, { color: colors.text }]}>History</Text>
+               <TouchableOpacity onPress={() => setFilterModalVisible(true)}>
+                 <MaterialCommunityIcons name="calendar-search" size={28} color={accentColor} />
+               </TouchableOpacity>
+            </View>
+
+            {isFiltering && (
+               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, backgroundColor: colors.cardElevated, padding: 10, borderRadius: 8 }}>
+                 <Text style={{ color: colors.text }}>Filtered: {filterStartDate} to {filterEndDate}</Text>
+                 <TouchableOpacity onPress={clearFilter}>
+                   <MaterialCommunityIcons name="close-circle" size={20} color={colors.textMuted} />
+                 </TouchableOpacity>
+               </View>
+            )}
+
+            {chartData ? (
+              <View style={styles.chartContainer}>
+                <Text style={[styles.chartTitle, { color: colors.text }]}>Performance Growth</Text>
+
               <LineChart
                 data={chartData}
                 width={screenWidth - 40}
@@ -190,12 +295,44 @@ export default function HistoryScreen() {
             </View>
           ) : (
             <View style={{ marginBottom: 20 }}>
-              <Text style={[styles.headerTitle, { color: colors.text }]}>History</Text>
               <Text style={[styles.headerSub, { color: colors.textMuted }]}>Log more workouts to see your growth chart!</Text>
             </View>
-          )
+          )}
+          </>
         }
       />
+      
+      {pendingDeletes.length > 0 && (
+        <View style={styles.undoContainer}>
+          <Text style={styles.undoText}>Workout deleted.</Text>
+          <TouchableOpacity onPress={() => undoDelete(pendingDeletes[0].id, pendingDeletes[0].timeoutId)}>
+            <Text style={styles.undoButton}>UNDO</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <Modal visible={isFilterModalVisible} transparent={true} animationType="fade">
+        <View style={styles.modalOverlay}>
+           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Filter by Date Range</Text>
+              
+              <Text style={[styles.modalLabel, { color: colors.textMuted }]}>Start Date</Text>
+              <TextInput style={[styles.modalInput, { color: colors.text, borderColor: colors.border }]} placeholderTextColor={colors.textMuted} placeholder="YYYY-MM-DD" value={filterStartDate} onChangeText={setFilterStartDate} />
+
+              <Text style={[styles.modalLabel, { color: colors.textMuted }]}>End Date</Text>
+              <TextInput style={[styles.modalInput, { color: colors.text, borderColor: colors.border }]} placeholderTextColor={colors.textMuted} placeholder="YYYY-MM-DD" value={filterEndDate} onChangeText={setFilterEndDate} />
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+                 <TouchableOpacity onPress={() => setFilterModalVisible(false)} style={{ marginRight: 20 }}>
+                    <Text style={{ color: colors.textMuted, fontSize: 16 }}>Cancel</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity onPress={applyFilter}>
+                    <Text style={{ color: accentColor, fontSize: 16, fontWeight: 'bold' }}>Apply Filter</Text>
+                 </TouchableOpacity>
+              </View>
+           </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -319,5 +456,57 @@ const styles = StyleSheet.create({
   },
   optionsText: {
     fontSize: 13,
+  },
+  undoContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: '#333',
+    padding: 16,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  undoText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  undoButton: {
+    color: '#ff4757',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1, 
+    justifyContent: 'center', 
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 20
+  },
+  modalContent: {
+    padding: 24, 
+    borderRadius: 16,
+  },
+  modalTitle: {
+    fontSize: 20, 
+    fontWeight: 'bold', 
+    marginBottom: 20
+  },
+  modalLabel: {
+    fontSize: 14, 
+    marginBottom: 8
+  },
+  modalInput: {
+    borderWidth: 1, 
+    borderRadius: 8, 
+    padding: 12, 
+    marginBottom: 16, 
+    fontSize: 16
   }
 });

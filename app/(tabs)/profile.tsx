@@ -5,7 +5,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { dualStorage } from '@/lib/storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 const DEFAULT_AVATARS = [
   'https://api.dicebear.com/7.x/avataaars/png?seed=Felix&backgroundColor=ff4757',
@@ -20,6 +20,7 @@ export default function ProfileScreen() {
   
   const { newSignIn } = useLocalSearchParams();
   const isNewUser = newSignIn === 'true';
+  const router = useRouter();
   
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -123,17 +124,24 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Header with Edit Toggle */}
+        {/* Header with Edit and Settings Toggle */}
         <View style={styles.headerRow}>
           <View>
             <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
             {isEditing && <Text style={[styles.subtitle, { color: colors.textMuted }]}>Update your physical details.</Text>}
           </View>
-          {!isEditing && (
-            <TouchableOpacity onPress={() => setIsEditing(true)} style={[styles.editIconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <MaterialCommunityIcons name="pencil" size={24} color={colors.text} />
-            </TouchableOpacity>
-          )}
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            {!isEditing && (
+              <TouchableOpacity onPress={() => setIsEditing(true)} style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <MaterialCommunityIcons name="pencil" size={24} color={colors.text} />
+              </TouchableOpacity>
+            )}
+            {!isEditing && (
+              <TouchableOpacity onPress={() => router.push('/settings')} style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <MaterialCommunityIcons name="cog" size={24} color={colors.text} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Avatar Section */}
@@ -312,6 +320,18 @@ export default function ProfileScreen() {
                 <Text style={[styles.infoValue, { color: colors.text }]}>{(gapValue && gapUnit !== 'none') ? `${gapValue} ${gapUnit}` : 'None'}</Text>
               </View>
             </View>
+
+            <TouchableOpacity 
+              style={[styles.analyticsBtn, { backgroundColor: colors.card, borderColor: accentColor }]}
+              onPress={() => router.push('/analytics' as any)}
+            >
+              <MaterialCommunityIcons name="chart-box" size={28} color={accentColor} />
+              <View style={{ marginLeft: 16, flex: 1 }}>
+                <Text style={[styles.analyticsTitle, { color: colors.text }]}>View Analytics</Text>
+                <Text style={[styles.analyticsSub, { color: colors.textMuted }]}>See your workout trends and PRs</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textMuted} />
+            </TouchableOpacity>
           </View>
         )}
 
@@ -365,7 +385,7 @@ const styles = StyleSheet.create({
     color: '#aaaaaa',
     marginTop: 4,
   },
-  editIconBtn: {
+  iconBtn: {
     backgroundColor: '#1e1e1e',
     padding: 12,
     borderRadius: 50,
@@ -512,5 +532,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     textTransform: 'capitalize',
+  },
+  analyticsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 10,
+    marginBottom: 40,
+    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  analyticsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  analyticsSub: {
+    fontSize: 14,
   }
 });
