@@ -3,7 +3,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { dualStorage } from '@/lib/storage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, SafeAreaView, StyleSheet, Text, View, Modal, TextInput, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, SafeAreaView, StyleSheet, Text, View, Modal, TextInput, TouchableOpacity, Platform } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { Swipeable } from 'react-native-gesture-handler';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -41,6 +41,8 @@ export default function HistoryScreen() {
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [isFiltering, setIsFiltering] = useState(false);
+  
+  const [isInfoModalVisible, setInfoModalVisible] = useState(false);
 
   // Use useFocusEffect instead of useEffect to reload data every time the tab is visited
   useFocusEffect(
@@ -270,7 +272,12 @@ export default function HistoryScreen() {
 
             {chartData ? (
               <View style={styles.chartContainer}>
-                <Text style={[styles.chartTitle, { color: colors.text }]}>Performance Growth</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                  <Text style={[styles.chartTitle, { color: colors.text, marginBottom: 0, marginRight: 8 }]}>Performance Growth</Text>
+                  <TouchableOpacity onPress={() => setInfoModalVisible(true)}>
+                    <MaterialCommunityIcons name="information-outline" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
 
               <LineChart
                 data={chartData}
@@ -339,6 +346,31 @@ export default function HistoryScreen() {
                     <Text style={{ color: accentColor, fontSize: 16, fontWeight: 'bold' }}>Apply Filter</Text>
                  </TouchableOpacity>
               </View>
+           </View>
+        </View>
+      </Modal>
+
+      {/* Information Modal */}
+      <Modal visible={isInfoModalVisible} transparent={true} animationType="fade">
+        <View style={styles.modalOverlay}>
+           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Workout Volume</Text>
+              <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16, marginTop: 10 }} />
+              
+              <Text style={{ color: colors.text, fontSize: 16, lineHeight: 24, marginBottom: 16 }}>
+                <Text style={{ fontWeight: 'bold' }}>Total volume</Text> = sets × reps × weight.
+              </Text>
+              
+              <Text style={{ color: colors.textMuted, fontSize: 15, marginBottom: 8 }}>Example:</Text>
+              <View style={{ backgroundColor: colors.cardElevated, padding: 12, borderRadius: 8, marginBottom: 20 }}>
+                <Text style={{ color: colors.text, fontSize: 15, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }}>
+                  3 sets × 10 reps × 50 {weightUnit} = 1500 {weightUnit}
+                </Text>
+              </View>
+
+              <TouchableOpacity onPress={() => setInfoModalVisible(false)} style={{ alignSelf: 'flex-end', padding: 8 }}>
+                <Text style={{ color: accentColor, fontSize: 16, fontWeight: 'bold' }}>Got it</Text>
+              </TouchableOpacity>
            </View>
         </View>
       </Modal>
