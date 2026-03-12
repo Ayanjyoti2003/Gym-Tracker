@@ -6,6 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Markdown from 'react-native-markdown-display';
 
 export default function DashboardScreen() {
   const { user, signOut } = useAuth();
@@ -95,7 +96,19 @@ export default function DashboardScreen() {
           </View>
 
           {insightText ? (
-            <Text style={[styles.aiText, { color: colors.text }]}>{insightText}</Text>
+            <Markdown style={{
+              body: { color: colors.text, fontSize: 15, lineHeight: 24 },
+              strong: { color: colors.text, fontWeight: 'bold' as const },
+              bullet_list: { marginVertical: 4 },
+              ordered_list: { marginVertical: 4 },
+              list_item: { marginVertical: 2 },
+              paragraph: { marginTop: 0, marginBottom: 8 },
+              heading1: { color: colors.text, fontSize: 20, fontWeight: 'bold' as const },
+              heading2: { color: colors.text, fontSize: 18, fontWeight: 'bold' as const },
+              heading3: { color: colors.text, fontSize: 16, fontWeight: 'bold' as const },
+            }}>
+              {insightText}
+            </Markdown>
           ) : (
             <Text style={[styles.aiText, { color: colors.textMuted }]}>
               {canGenerate
