@@ -30,6 +30,7 @@ export const MASTER_EXERCISES: ExerciseDef[] = [
   { id: 'incline_t_bar_row', name: 'Incline T-Bar Row', category: 'Back', icon: 'weight', type: 'weight' },
   { id: 'lat_pulldown_row', name: 'Lat Pulldown - Row Machine', category: 'Back', icon: 'rowing', type: 'weight' },
   { id: 'face_pull', name: 'Face Pull', category: 'Back', icon: 'transit-connection-variant', type: 'weight' },
+  { id: 'rear_delt_fly', name: 'Rear Delt Fly', category: 'Back', icon: 'arm-flex-outline', type: 'weight' },
 
   // --- Legs ---
   { id: 'squat_barbell', name: 'Barbell Squat', category: 'Legs', icon: 'human', type: 'weight' },
@@ -54,6 +55,7 @@ export const MASTER_EXERCISES: ExerciseDef[] = [
   { id: 'bicep_curl_barbell', name: 'Barbell Bicep Curl', category: 'Biceps', icon: 'weight-lifter', type: 'weight' },
   { id: 'hammer_curl', name: 'Hammer Curl', category: 'Biceps', icon: 'dumbbell', type: 'weight' },
   { id: 'preacher_curl', name: 'Preacher Curl', category: 'Biceps', icon: 'arm-flex', type: 'weight' },
+  { id: 'bicep_curl_machine', name: 'Bicep Curl Machine', category: 'Biceps', icon: 'arm-flex', type: 'weight' },
 
   // --- Triceps ---
   { id: 'tricep_pushdown', name: 'Tricep Pushdown', category: 'Triceps', icon: 'transit-connection-variant', type: 'weight' },
