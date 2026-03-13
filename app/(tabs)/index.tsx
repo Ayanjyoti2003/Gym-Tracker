@@ -5,19 +5,28 @@ import { dualStorage } from '@/lib/storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Markdown from 'react-native-markdown-display';
+import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+const FOCUS_OPTIONS = ['Full Body', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core'];
+
+type WorkoutInsight = {
+  caloriesBurned: number;
+  encouragement: string;
+  insight: string;
+  nextFocus: string;
+};
 
 export default function DashboardScreen() {
   const { user, signOut } = useAuth();
   const { colors, accentColor } = useTheme();
 
   const [loadingInsights, setLoadingInsights] = useState(false);
-  const [insightText, setInsightText] = useState('');
+  const [insightData, setInsightData] = useState<WorkoutInsight | null>(null);
   const [canGenerate, setCanGenerate] = useState(false);
 
   const [generatingRoutine, setGeneratingRoutine] = useState(false);
   const [customRoutine, setCustomRoutine] = useState<any>(null);
+  const [selectedFocus, setSelectedFocus] = useState<string[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -51,8 +60,10 @@ export default function DashboardScreen() {
     allWorkouts.sort((a, b) => b.timestamp - a.timestamp);
     const recentLogs = allWorkouts.slice(0, 5);
 
-    const generatedText = await getWorkoutInsights(profileData, recentLogs);
-    setInsightText(generatedText || 'No insights could be generated.');
+    const result = await getWorkoutInsights(profileData, recentLogs);
+    if (result) {
+      setInsightData(result);
+    }
     setLoadingInsights(false);
   };
 
@@ -68,14 +79,31 @@ export default function DashboardScreen() {
     const prefs = await dualStorage.getItem('data', 'preferences', user.uid);
     const weightUnit = prefs?.weightUnit || 'kg';
 
-    const generatedRoutine = await generateCustomRoutine(profileData, recentLogs, weightUnit);
+    const generatedRoutine = await generateCustomRoutine(profileData, recentLogs, weightUnit, selectedFocus);
     if (generatedRoutine) {
       setCustomRoutine(generatedRoutine);
-      // Save it locally/cloud so it persists
       await dualStorage.setItem('data', 'custom_routine', generatedRoutine, user.uid);
     }
-
+    setSelectedFocus([]);
     setGeneratingRoutine(false);
+  };
+
+  const handleFocusSelect = (focus: string) => {
+    if (focus === 'Full Body') {
+      setSelectedFocus((prev) => (prev.includes('Full Body') ? [] : ['Full Body']));
+      return;
+    }
+    setSelectedFocus((prev) => {
+      const without = prev.filter((f) => f !== 'Full Body');
+      if (without.includes(focus)) {
+        return without.filter((f) => f !== focus);
+      }
+      if (without.length >= 2) {
+        Alert.alert('Limit Reached', 'You can select up to 2 focus areas.');
+        return without;
+      }
+      return [...without, focus];
+    });
   };
 
   return (
@@ -95,20 +123,37 @@ export default function DashboardScreen() {
             <Text style={[styles.aiTitle, { color: colors.text }]}>AI Insights ✨</Text>
           </View>
 
-          {insightText ? (
-            <Markdown style={{
-              body: { color: colors.text, fontSize: 15, lineHeight: 24 },
-              strong: { color: colors.text, fontWeight: 'bold' as const },
-              bullet_list: { marginVertical: 4 },
-              ordered_list: { marginVertical: 4 },
-              list_item: { marginVertical: 2 },
-              paragraph: { marginTop: 0, marginBottom: 8 },
-              heading1: { color: colors.text, fontSize: 20, fontWeight: 'bold' as const },
-              heading2: { color: colors.text, fontSize: 18, fontWeight: 'bold' as const },
-              heading3: { color: colors.text, fontSize: 16, fontWeight: 'bold' as const },
-            }}>
-              {insightText}
-            </Markdown>
+          {insightData ? (
+            <View>
+              <View style={[styles.insightRow, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
+                <Text style={styles.insightEmoji}>🔥</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.insightLabel, { color: colors.textMuted }]}>Calories Burned</Text>
+                  <Text style={[styles.insightValue, { color: colors.text }]}>{insightData.caloriesBurned} kcal</Text>
+                </View>
+              </View>
+              <View style={[styles.insightRow, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
+                <Text style={styles.insightEmoji}>💪</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.insightLabel, { color: colors.textMuted }]}>Encouragement</Text>
+                  <Text style={[styles.insightValue, { color: colors.text }]}>{insightData.encouragement}</Text>
+                </View>
+              </View>
+              <View style={[styles.insightRow, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
+                <Text style={styles.insightEmoji}>📊</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.insightLabel, { color: colors.textMuted }]}>Insight</Text>
+                  <Text style={[styles.insightValue, { color: colors.text }]}>{insightData.insight}</Text>
+                </View>
+              </View>
+              <View style={[styles.insightRow, { backgroundColor: colors.cardElevated, borderColor: colors.border, marginBottom: 0 }]}>
+                <Text style={styles.insightEmoji}>🎯</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.insightLabel, { color: colors.textMuted }]}>Next Focus</Text>
+                  <Text style={[styles.insightValue, { color: colors.text }]}>{insightData.nextFocus}</Text>
+                </View>
+              </View>
+            </View>
           ) : (
             <Text style={[styles.aiText, { color: colors.textMuted }]}>
               {canGenerate
@@ -117,7 +162,7 @@ export default function DashboardScreen() {
             </Text>
           )}
 
-          {canGenerate && !insightText && (
+          {canGenerate && !insightData && (
             <TouchableOpacity
               style={[styles.generateBtn, { backgroundColor: accentColor }]}
               onPress={generateAIInsights}
@@ -144,6 +189,33 @@ export default function DashboardScreen() {
               <Text style={[styles.aiText, { color: colors.textMuted }]}>
                 Get a highly personalized 1-day workout routine tailored to your goals, experience, and past performance.
               </Text>
+
+              {/* Focus Selection Chips */}
+              <Text style={[styles.focusHeader, { color: colors.textMuted }]}>Workout Focus (choose up to 2)</Text>
+              <View style={styles.chipRow}>
+                {FOCUS_OPTIONS.map((focus) => {
+                  const isActive = selectedFocus.includes(focus);
+                  return (
+                    <TouchableOpacity
+                      key={focus}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor: isActive ? accentColor + '20' : colors.cardElevated,
+                          borderColor: isActive ? accentColor : colors.border,
+                        },
+                      ]}
+                      onPress={() => handleFocusSelect(focus)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.chipText, { color: isActive ? accentColor : colors.textMuted }]}>
+                        {focus}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               <TouchableOpacity
                 style={[styles.generateBtn, { backgroundColor: accentColor }]}
                 onPress={handleGenerateRoutine}
@@ -343,5 +415,53 @@ const styles = StyleSheet.create({
   regenerateBtnText: {
     fontWeight: 'bold',
     fontSize: 16,
-  }
+  },
+  insightRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  insightEmoji: {
+    fontSize: 22,
+    marginRight: 12,
+    marginTop: 2,
+  },
+  insightLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  insightValue: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  focusHeader: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 18,
+    marginBottom: 10,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  chip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1.5,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
 });

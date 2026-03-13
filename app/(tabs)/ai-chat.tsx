@@ -1,6 +1,6 @@
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { chatWithGemini } from '@/lib/genai';
+import { chatWithGemini, summarizeLogs } from '@/lib/genai';
 import { dualStorage } from '@/lib/storage';
 import { db } from '../../firebaseConfig';
 import { collection, query, orderBy, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
@@ -89,7 +89,7 @@ export default function AiChatScreen() {
 
     const allWorkouts = await dualStorage.getAllLocal('workouts');
     allWorkouts.sort((a: any, b: any) => b.timestamp - a.timestamp);
-    setRecentWorkouts(allWorkouts.slice(0, 5));
+    setRecentWorkouts(summarizeLogs(allWorkouts.slice(0, 10)));
 
     let totalVol = 0;
     let totalMins = 0;

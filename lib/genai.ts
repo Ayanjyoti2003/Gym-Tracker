@@ -1,93 +1,375 @@
 import { GoogleGenAI } from '@google/genai';
 
-// Initialize the SDK. In a real app, ensure EXPO_PUBLIC_GEMINI_API_KEY is in your .env file
+// Initialize the SDK
 const ai = new GoogleGenAI({ apiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'MISSING_API_KEY' });
 
-export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) => {
-  try {
-    const prompt = `
-      You are an expert, encouraging AI personal trainer. Analyze the following user data to provide highly personalized insights.
+// ─── MET Values Table ────────────────────────────────────────
+const MET_VALUES: Record<string, number> = {
+  strength: 3.5,
+  walking: 4,
+  running: 9,
+  cycling: 7,
+  treadmill: 8,
+  rowing: 6,
+  hiit: 8,
+  light_cardio: 5,
+  cardio: 6,
+};
 
-      User Profile:
-      Name: ${profileData?.name || 'Unknown'}
-      Gender: ${profileData?.gender || 'Unknown'}
-      Height: ${profileData?.height || 'Unknown'} cm
-      Weight: ${profileData?.weight || 'Unknown'} kg
-      Goals: ${profileData?.goals || 'General fitness'}
+// ─── Helper: Timeout Wrapper ─────────────────────────────────
+const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms)
+  );
+  return Promise.race([promise, timeout]);
+};
 
-      Recent Workout Logs (last 5 sessions):
-      ${JSON.stringify(recentLogs, null, 2)}
-      (Note: "type: 'cardio'" exercises will have 'speed' and 'incline' string ranges instead of sets/reps/weight; "setsData" if present contains specific reps/weight for each set; "selectedOptions" if present contains specific techniques or variations used)
+// ─── Helper: Estimate Calories ───────────────────────────────
+export const estimateCalories = (
+  weightKg: number,
+  durationMins: number,
+  type: string
+): number => {
+  const met = MET_VALUES[type?.toLowerCase()] || 3.5;
+  const hours = durationMins / 60;
+  return Math.round(met * weightKg * hours);
+};
 
-      Based on this data, please provide:
-      1. An estimated total calorie burn for the most recent session using standard MET values for the exercises based on the user's weight and the execution time (durationMins). Take into account the speed and incline values if present.
-      2. 1-2 sentences of encouraging feedback.
-      3. A specific suggestion for what they should focus on next time to avoid plateaus.
-      
-      Format the response cleanly without markdown headers, just natural readable text using bullet points for separation.
-    `;
+// ─── Helper: Summarize Logs (Token Reduction) ────────────────
+export const summarizeLogs = (logs: any[]) => {
+  if (!logs || logs.length === 0) return [];
 
-    // Call the Gemini model
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
+  return logs.map((session) => ({
+    date: session.date || session.timestamp,
+    duration: session.durationMins || 0,
+    type: session.type || 'strength',
+    exercises: session.exercises?.map((ex: any) => ({
+      name: ex.name || ex.exerciseName || 'Unknown',
+      type: ex.type || 'strength',
+      muscle: ex.muscle || ex.muscleGroup || undefined,
+      sets: ex.setsData?.length || ex.sets || 0,
+      avgWeight:
+        ex.setsData && ex.setsData.length > 0
+          ? Math.round(
+              ex.setsData.reduce((a: number, s: any) => a + (s.weight || 0), 0) /
+                ex.setsData.length
+            )
+          : ex.weight || 0,
+      bestReps:
+        ex.setsData && ex.setsData.length > 0
+          ? Math.max(...ex.setsData.map((s: any) => s.reps || 0))
+          : ex.reps || 0,
+    })) || [],
+  }));
+};
+
+// ─── Helper: Compute Derived Metrics ─────────────────────────
+export const computeDerivedMetrics = (logs: any[]) => {
+  const defaults = {
+    workoutsPerWeek: 0,
+    volumeTrendPercent: 0,
+    strengthProgress: {} as Record<string, number>,
+    muscleBalance: {} as Record<string, number>,
+    cardioRatio: 0,
+  };
+
+  if (!logs || logs.length === 0) return defaults;
+
+  // 1. Weekly Workout Frequency
+  const timestamps = logs
+    .map((l) => l.timestamp || (l.date ? new Date(l.date).getTime() : 0))
+    .filter((t) => t > 0)
+    .sort((a, b) => a - b);
+
+  let workoutsPerWeek = logs.length;
+  if (timestamps.length >= 2) {
+    const spanMs = timestamps[timestamps.length - 1] - timestamps[0];
+    const spanWeeks = spanMs / (1000 * 60 * 60 * 24 * 7);
+    if (spanWeeks >= 1) {
+      workoutsPerWeek = Math.round((logs.length / spanWeeks) * 10) / 10;
+    }
+  }
+
+  // 2. Training Volume Trend (last week vs previous week)
+  const now = Date.now();
+  const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const twoWeeksAgo = now - 14 * 24 * 60 * 60 * 1000;
+
+  const getVolume = (session: any): number => {
+    let vol = 0;
+    if (session.exercises) {
+      session.exercises.forEach((ex: any) => {
+        if (ex.setsData) {
+          ex.setsData.forEach((s: any) => {
+            vol += (s.reps || 0) * (s.weight > 0 ? s.weight : 1);
+          });
+        } else {
+          vol += (ex.sets || 0) * (ex.reps || 0) * (ex.weight > 0 ? ex.weight : 1);
+        }
+      });
+    }
+    return vol;
+  };
+
+  let lastWeekVol = 0;
+  let prevWeekVol = 0;
+  logs.forEach((session) => {
+    const ts = session.timestamp || (session.date ? new Date(session.date).getTime() : 0);
+    const vol = getVolume(session);
+    if (ts >= oneWeekAgo) {
+      lastWeekVol += vol;
+    } else if (ts >= twoWeeksAgo) {
+      prevWeekVol += vol;
+    }
+  });
+
+  let volumeTrendPercent = 0;
+  if (prevWeekVol > 0) {
+    volumeTrendPercent = Math.round(((lastWeekVol - prevWeekVol) / prevWeekVol) * 1000) / 10;
+  }
+
+  // 3. Strength Progress (major lifts only)
+  const majorLifts = ['bench press', 'squat', 'deadlift', 'overhead press'];
+  const strengthProgress: Record<string, number> = {};
+
+  majorLifts.forEach((liftName) => {
+    const liftData: { ts: number; maxWeight: number }[] = [];
+
+    logs.forEach((session) => {
+      const ts = session.timestamp || (session.date ? new Date(session.date).getTime() : 0);
+      session.exercises?.forEach((ex: any) => {
+        if ((ex.name || ex.exerciseName || '').toLowerCase().includes(liftName)) {
+          let maxW = 0;
+          if (ex.setsData) {
+            maxW = Math.max(...ex.setsData.map((s: any) => s.weight || 0));
+          } else {
+            maxW = ex.weight || 0;
+          }
+          if (maxW > 0) {
+            liftData.push({ ts, maxWeight: maxW });
+          }
+        }
+      });
     });
 
-    return response.text;
+    if (liftData.length >= 2) {
+      liftData.sort((a, b) => a.ts - b.ts);
+      const first = liftData[0].maxWeight;
+      const latest = liftData[liftData.length - 1].maxWeight;
+      if (first > 0) {
+        const key = liftName.replace(/\s+/g, '');
+        // camelCase the key
+        const camelKey = key.charAt(0).toLowerCase() + key.slice(1);
+        strengthProgress[camelKey] = Math.round(((latest - first) / first) * 100);
+      }
+    }
+  });
+
+  // 4. Muscle Group Balance
+  const muscleBalance: Record<string, number> = {};
+  logs.forEach((session) => {
+    const sessionMuscles = new Set<string>();
+    session.exercises?.forEach((ex: any) => {
+      const muscle = (ex.muscle || ex.muscleGroup || 'other').toLowerCase();
+      sessionMuscles.add(muscle);
+    });
+    sessionMuscles.forEach((muscle) => {
+      muscleBalance[muscle] = (muscleBalance[muscle] || 0) + 1;
+    });
+  });
+
+  // 5. Cardio Ratio
+  let cardioSessions = 0;
+  logs.forEach((session) => {
+    if (session.type === 'cardio') {
+      cardioSessions++;
+    } else if (session.exercises) {
+      const allCardio = session.exercises.every((ex: any) => ex.type === 'cardio');
+      if (allCardio && session.exercises.length > 0) cardioSessions++;
+    }
+  });
+  const cardioRatio = logs.length > 0 ? Math.round((cardioSessions / logs.length) * 100) : 0;
+
+  return {
+    workoutsPerWeek,
+    volumeTrendPercent,
+    strengthProgress,
+    muscleBalance,
+    cardioRatio,
+  };
+};
+
+// ─── AI: Workout Insights (Structured JSON) ──────────────────
+export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) => {
+  try {
+    // Sort by most recent first and limit to 10 sessions
+    const sortedLogs = [...(recentLogs || [])]
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, 10);
+
+    const weight = profileData?.weight || 70;
+    const latestSession = sortedLogs[0] || {};
+    const calories = estimateCalories(
+      weight,
+      latestSession?.durationMins || 30,
+      latestSession?.type || 'strength'
+    );
+
+    const summarized = summarizeLogs(sortedLogs);
+    const metrics = computeDerivedMetrics(sortedLogs);
+
+    const prompt = `
+You are an expert AI fitness coach.
+
+User profile:
+Name: ${profileData?.name || 'User'}
+Gender: ${profileData?.gender || 'Unknown'}
+Height: ${profileData?.height || 'Unknown'} cm
+Weight: ${profileData?.weight || 'Unknown'} kg
+Goal: ${profileData?.goals || 'General fitness'}
+
+Estimated calories burned in latest workout: ${calories}
+
+Workout summaries (last ${summarized.length} sessions):
+${JSON.stringify(summarized)}
+
+Derived Metrics:
+${JSON.stringify(metrics)}
+
+Analyze the workout data for patterns:
+- Strength progress trends
+- Possible plateaus
+- Muscle group balance
+- Cardio frequency
+- Training consistency
+- Training volume trends
+
+Use the derived metrics to detect patterns. Prefer concrete observations with numbers whenever possible.
+Avoid generic encouragement. Reference specific numbers when possible.
+
+Return ONLY JSON:
+
+{
+  "caloriesBurned": ${calories},
+  "encouragement": "1–2 sentences of positive feedback referencing specific numbers",
+  "insight": "specific observation from their workout data and derived metrics",
+  "nextFocus": "clear suggestion for their next workout"
+}
+
+Safety rules:
+- Never recommend extreme diets, steroid use, or unsafe training loads
+- Always prioritize injury prevention and proper form
+- Avoid extreme training advice
+`;
+
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.4,
+        },
+      }),
+      10000
+    );
+
+    const text = response.text ?? '{}';
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      console.error('Insight JSON parse failed:', text);
+      return null;
+    }
   } catch (error) {
     console.error('Gen AI Error:', error);
-    return "I couldn't generate insights right now. Double-check your API key configuration in the .env file and ensure you have an active network connection!";
+    return null;
   }
 };
-export const chatWithGemini = async (message: string, context: { profile: any, recentLogs: any[], analytics: any, equipment: string[], weightUnit: string }, chatHistory: { role: string, parts: [{ text: string }] }[] = []) => {
-  try {
-    const systemInstruction = `
-      You are Gym Tracker AI, an expert, incredibly encouraging personal trainer and nutritionist built right into the user's mobile app.
-      Be concise, enthusiastic, and direct. Use emojis!
-      
-      USER CONTEXT:
-      Name: ${context.profile?.name || 'Unknown'}
-      Gender: ${context.profile?.gender || 'Unknown'}
-      Height: ${context.profile?.height || 'Unknown'} cm
-      Weight: ${context.profile?.weight || 'Unknown'} ${context.weightUnit}
-      Goals: ${context.profile?.goals || 'General fitness'}
-      Available Equipment IDs: ${context.equipment.join(', ') || 'Unknown'}
-      Preferred Weight Unit: ${context.weightUnit}
-      
-      Recent Workouts (Last 5):
-      ${JSON.stringify(context.recentLogs, null, 2)}
-      (Note: "type: 'cardio'" exercises use 'speed' and 'incline' string ranges; "setsData" if present contains specific reps/weight for each set; "selectedOptions" if present contains specific techniques or variations used)
-      
-      Lifetime Analytics Summary:
-      ${JSON.stringify(context.analytics, null, 2)}
-      
-      Always tailor your advice specifically to their goals, their recent performance, and the equipment they actually have available in their gym.
-      
-      CRITICAL RULE: Check their height and weight to estimate their BMI. If they appear to be a newbie/rookie (look at their history and workout data) AND their BMI indicates they are overweight or obese, heavily emphasize starting with about 30 minutes of daily cardio (like Treadmill, walking, etc.) for the first 1-2 months so their body can adjust before jumping into heavy weightlifting routines.
-    `;
 
-    // We format the history for the 'contents' array as required by the new @google/genai SDK
+// ─── AI: Chat with Gemini ────────────────────────────────────
+export const chatWithGemini = async (
+  message: string,
+  context: { profile: any; recentLogs: any[]; analytics: any; equipment: string[]; weightUnit: string },
+  chatHistory: { role: string; parts: [{ text: string }] }[] = []
+) => {
+  try {
+    const summarizedLogs = summarizeLogs(context.recentLogs || []);
+
+    const systemInstruction = `
+You are Gym Tracker AI, an expert personal trainer and nutritionist built into a fitness app.
+
+Style:
+- Encouraging and concise
+- Use emojis sparingly
+- Direct and actionable
+
+User Profile:
+Name: ${context.profile?.name || 'Unknown'}
+Gender: ${context.profile?.gender || 'Unknown'}
+Height: ${context.profile?.height || 'Unknown'} cm
+Weight: ${context.profile?.weight || 'Unknown'} ${context.weightUnit}
+Goal: ${context.profile?.goals || 'General fitness'}
+
+Available Equipment:
+${context.equipment.join(', ') || 'Unknown'}
+
+Preferred Weight Unit: ${context.weightUnit}
+
+Recent Workouts Summary:
+${JSON.stringify(summarizedLogs)}
+
+Lifetime Analytics:
+${JSON.stringify(context.analytics)}
+
+Rules:
+- Tailor advice to their goals, recent performance, and available equipment
+- Only recommend exercises possible with available equipment
+- Avoid unsafe weight recommendations
+- Never recommend extreme diets, steroid use, or unsafe training loads
+- Always prioritize injury prevention and proper form
+- Focus on sustainable progress
+
+If BMI > 25 AND training history suggests beginner-level activity,
+recommend prioritizing light cardio and gradual resistance training for the first few weeks.
+`;
+
     const contents = [
       { role: 'user', parts: [{ text: systemInstruction }] },
       { role: 'model', parts: [{ text: 'Understood. I am ready to be your personal AI trainer!' }] },
       ...chatHistory,
-      { role: 'user', parts: [{ text: message }] }
+      { role: 'user', parts: [{ text: message }] },
     ];
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: contents,
-    });
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: contents,
+        config: {
+          temperature: 0.7,
+        },
+      }),
+      10000
+    );
 
-    return response.text;
+    return response.text ?? '';
   } catch (error) {
     console.error('Gen AI Chat Error:', error);
-    return "Whoops! I'm having trouble connecting to my servers right now. Are you offline or is your API key missing?";
+    return "Whoops! I'm having trouble connecting right now. Please check your connection and try again.";
   }
 };
 
-export const generateCustomRoutine = async (profileData: any, recentLogs: any[], weightUnit: string = 'kg') => {
+// ─── AI: Generate Custom Routine ─────────────────────────────
+export const generateCustomRoutine = async (profileData: any, recentLogs: any[], weightUnit: string = 'kg', focusAreas: string[] = []) => {
   try {
+    // Sort and limit logs
+    const sortedLogs = [...(recentLogs || [])]
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, 10);
+
+    const summarized = summarizeLogs(sortedLogs);
+
     const prompt = `
       You are an elite AI Personal Trainer. Based on the user's profile and their workout history, create a highly personalized 1-day custom workout routine.
       
@@ -101,9 +383,18 @@ export const generateCustomRoutine = async (profileData: any, recentLogs: any[],
       - Gym Experience: ${profileData?.experienceValue ? profileData.experienceValue + ' ' + (profileData.experienceUnit || 'months') : 'Beginner / Newbie'}
       - Recent Break/Gap: ${profileData?.gapValue && profileData?.gapUnit !== 'none' ? profileData.gapValue + ' ' + profileData.gapUnit : 'None'}
 
-      Recent Workout Logs (Historical Data):
-      ${JSON.stringify(recentLogs, null, 2)}
-      (Note: "setsData" if present contains specific reps/weight for each set; "selectedOptions" if present contains specific techniques or variations used)
+      Recent Workout Summaries:
+      ${JSON.stringify(summarized)}
+
+      Workout Focus Selected: ${focusAreas.length ? focusAreas.join(', ') : 'Full Body'}
+
+      The user selected the above muscle groups for today's workout.
+      Prioritize exercises targeting these muscles while optionally including supporting muscles if appropriate.
+      Do not include exercises unrelated to the selected focus unless necessary for balance or warm-up.
+      Adjust the number of exercises based on the workout focus:
+      - Single muscle: 4–5 exercises
+      - Two muscles: 5–6 exercises
+      - Full Body: 6–8 exercises
       
       INSTRUCTIONS:
       1. Carefully assess their Gym Experience, Recent Break/Gap, and Gender.
@@ -111,7 +402,12 @@ export const generateCustomRoutine = async (profileData: any, recentLogs: any[],
       3. CRITICAL: Calculate their approximate BMI using their height and weight. If they are a beginner/rookie AND their BMI indicates they are overweight or obese, their routine MUST heavily focus on about 30 minutes of daily cardio to let their body adjust for the first 1-2 months before aggressive weightlifting.
       4. Explicitly suggest specific starting weights (e.g., "10 kg", "Bodyweight", "Adjust based on feel, maybe 5 kg dumbbells") for EACH exercise. Use their past workout history to inform this if available. Otherwise, use your assessment of their experience and gap to estimate a safe starting point.
       5. Briefly explain why this routine was chosen overall, and provide a clear reason and benefit for EACH specific exercise.
-      
+
+      Safety rules:
+      - Never recommend unsafe weight loads
+      - Prioritize correct form and injury prevention
+      - Avoid extreme training advice
+
       You MUST respond ONLY with a valid, clean JSON object matching exactly this schema, with NO markdown formatting:
       {
         "routineName": "Name of the routine",
@@ -129,21 +425,24 @@ export const generateCustomRoutine = async (profileData: any, recentLogs: any[],
       }
     `;
 
-    // We explicitly tell Gemini to return JSON
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json'
-      }
-    });
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.5,
+        },
+      }),
+      10000
+    );
 
-    const responseText = response.text || "{}";
+    const responseText = response.text ?? '{}';
 
     try {
       return JSON.parse(responseText);
     } catch (parseError) {
-      console.error("Failed to parse GenAI JSON:", responseText);
+      console.error('Failed to parse GenAI JSON:', responseText);
       return null;
     }
   } catch (error) {
