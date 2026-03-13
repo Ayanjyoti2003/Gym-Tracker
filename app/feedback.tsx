@@ -67,7 +67,7 @@ export default function FeedbackScreen() {
             <Text style={[styles.ticketValue, { color: accentColor }]}>{ticketId}</Text>
           </View>
           <Text style={[styles.successMessage, { color: colors.textMuted }]}>
-            Thank you for helping us improve Gym Tracker. We'll look into this as soon as possible.
+            Thank you for helping us improve Gym Tracker. We&apos;ll look into this as soon as possible.
           </Text>
           <TouchableOpacity
             style={[styles.closeBtn, { backgroundColor: accentColor }]}

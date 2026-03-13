@@ -26,8 +26,8 @@ export const submitFeedback = async (
     description,
     status: 'open',
     platform: Platform.OS,
-    device: Device.modelName || 'Unknown',
-    appVersion: Constants.expoConfig?.version || '1.0.0',
+    device: Device?.modelName || 'Unknown',
+    appVersion: Constants?.expoConfig?.version || '1.0.0',
     createdAt: serverTimestamp(),
   };
 
