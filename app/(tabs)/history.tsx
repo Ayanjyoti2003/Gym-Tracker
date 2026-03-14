@@ -44,6 +44,10 @@ export default function HistoryScreen() {
   
   const [isInfoModalVisible, setInfoModalVisible] = useState(false);
 
+  const [isBinModalVisible, setBinModalVisible] = useState(false);
+  const [deletedLogs, setDeletedLogs] = useState<WorkoutLog[]>([]);
+  const [restoring, setRestoring] = useState<string | null>(null);
+
   // Use useFocusEffect instead of useEffect to reload data every time the tab is visited
   useFocusEffect(
     useCallback(() => {
@@ -71,10 +75,31 @@ export default function HistoryScreen() {
     setLoading(false);
   };
 
+  const openBin = async () => {
+    if (!user) return;
+    setBinModalVisible(true);
+    const deleted = await dualStorage.getDeletedWorkouts(user.uid);
+    setDeletedLogs(deleted as WorkoutLog[]);
+  };
+
+  const recoverWorkout = async (workout: WorkoutLog) => {
+    if (!user) return;
+    setRestoring(workout.id);
+    try {
+      await dualStorage.restoreWorkout(workout, user.uid);
+      setDeletedLogs(prev => prev.filter(l => l.id !== workout.id));
+      setLogs(prev => [workout, ...prev].sort((a, b) => b.timestamp - a.timestamp));
+      Alert.alert('Restored', 'Workout has been returned to your history.');
+    } catch (e) {
+      Alert.alert('Error', 'Failed to restore workout.');
+    }
+    setRestoring(null);
+  };
+
   const handleDeleteTrigger = (id: string) => {
     const timeoutId = setTimeout(() => {
       commitDelete(id);
-    }, 20000);
+    }, 10000); // reduced to 10s for better feel
     setPendingDeletes(prev => [...prev, { id, timeoutId }]);
   };
 
@@ -91,7 +116,7 @@ export default function HistoryScreen() {
     }
   };
 
-  const renderLeftActions = () => {
+  const renderRightActions = () => {
     return (
       <View style={{ backgroundColor: '#ff4757', justifyContent: 'center', alignItems: 'center', width: 80, borderRadius: 12, marginBottom: 16 }}>
         <MaterialCommunityIcons name="delete" size={32} color="#fff" />
@@ -116,9 +141,9 @@ export default function HistoryScreen() {
 
     return (
       <Swipeable
-        renderLeftActions={renderLeftActions}
+        renderRightActions={renderRightActions}
         onSwipeableOpen={(direction) => {
-           if (direction === 'left') handleDeleteTrigger(item.id);
+           if (direction === 'right') handleDeleteTrigger(item.id);
         }}
       >
         <View style={[styles.logCard, { backgroundColor: colors.card, borderLeftColor: accentColor }]}>
@@ -256,9 +281,14 @@ export default function HistoryScreen() {
           <>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: chartData ? 10 : 20 }}>
                <Text style={[styles.headerTitle, { color: colors.text }]}>History</Text>
-               <TouchableOpacity onPress={() => setFilterModalVisible(true)}>
-                 <MaterialCommunityIcons name="calendar-search" size={28} color={accentColor} />
-               </TouchableOpacity>
+               <View style={{ flexDirection: 'row', gap: 16 }}>
+                 <TouchableOpacity onPress={openBin}>
+                   <MaterialCommunityIcons name="delete-restore" size={28} color={accentColor} />
+                 </TouchableOpacity>
+                 <TouchableOpacity onPress={() => setFilterModalVisible(true)}>
+                   <MaterialCommunityIcons name="calendar-search" size={28} color={accentColor} />
+                 </TouchableOpacity>
+               </View>
             </View>
 
             {isFiltering && (
@@ -273,10 +303,10 @@ export default function HistoryScreen() {
             {chartData ? (
               <View style={styles.chartContainer}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                  <Text style={[styles.chartTitle, { color: colors.text, marginBottom: 0, marginRight: 8 }]}>Performance Growth</Text>
-                  <TouchableOpacity onPress={() => setInfoModalVisible(true)}>
-                    <MaterialCommunityIcons name="information-outline" size={20} color={colors.textMuted} />
-                  </TouchableOpacity>
+                   <Text style={[styles.chartTitle, { color: colors.text, marginBottom: 0, marginRight: 8 }]}>Performance Growth</Text>
+                   <TouchableOpacity onPress={() => setInfoModalVisible(true)}>
+                     <MaterialCommunityIcons name="information-outline" size={20} color={colors.textMuted} />
+                   </TouchableOpacity>
                 </View>
 
               <LineChart
@@ -326,6 +356,52 @@ export default function HistoryScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Recover/Bin Modal */}
+      <Modal visible={isBinModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, maxHeight: '80%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 0 }]}>Trash Bin (30d)</Text>
+              <TouchableOpacity onPress={() => setBinModalVisible(false)}>
+                <MaterialCommunityIcons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={deletedLogs}
+              keyExtractor={item => item.id}
+              ListEmptyComponent={
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <MaterialCommunityIcons name="delete-empty" size={48} color={colors.textMuted} />
+                  <Text style={{ color: colors.textMuted, marginTop: 12 }}>No recently deleted workouts.</Text>
+                </View>
+              }
+              renderItem={({ item }) => (
+                <View style={[styles.logCard, { marginBottom: 12, opacity: 0.8, backgroundColor: colors.cardElevated }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.logTitle, { color: colors.text, fontSize: 16 }]}>{item.exerciseName}</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>Deleted on: {new Date((item as any).deletedAt).toLocaleDateString()}</Text>
+                    </View>
+                    <TouchableOpacity 
+                      onPress={() => recoverWorkout(item)}
+                      disabled={restoring === item.id}
+                      style={{ backgroundColor: accentColor, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, height: 36 }}
+                    >
+                      {restoring === item.id ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={{ color: '#fff', fontWeight: 'bold' }}>Restore</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={isFilterModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
@@ -377,6 +453,182 @@ export default function HistoryScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  listContent: {
+    padding: 20,
+    paddingTop: 40,
+    paddingBottom: 40,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  headerSub: {
+    fontSize: 16,
+    color: '#aaaaaa',
+    marginTop: 4,
+  },
+  chartContainer: {
+    marginBottom: 30,
+  },
+  chartTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 10,
+  },
+  logCard: {
+    backgroundColor: '#1e1e1e',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff4757',
+  },
+  logHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  logTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  logDate: {
+    fontSize: 14,
+    color: '#aaaaaa',
+  },
+  logStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statBox: {
+    alignItems: 'center',
+    backgroundColor: '#2a2a2a',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    minWidth: 80,
+  },
+  statLabel: {
+    fontSize: 10,
+    color: '#888888',
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 18,
+    color: '#ffffff',
+    fontWeight: 'bold',
+    padding: 0,
+  },
+  emptyState: {
+    alignItems: 'center',
+    marginTop: 60,
+  },
+  emptyText: {
+    fontSize: 20,
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
+  emptySub: {
+    fontSize: 15,
+    color: '#aaaaaa',
+    marginTop: 8,
+  },
+  setsDataContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#333333',
+  },
+  setsDataRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  setsDataLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  setsDataValue: {
+    fontSize: 13,
+  },
+  optionsContainer: {
+    marginTop: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  optionsLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  optionsText: {
+    fontSize: 13,
+  },
+  undoContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: '#333',
+    padding: 16,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    zIndex: 1000,
+  },
+  undoText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  undoButton: {
+    color: '#ff4757',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1, 
+    justifyContent: 'center', 
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 20
+  },
+  modalContent: {
+    padding: 24, 
+    borderRadius: 16,
+  },
+  modalTitle: {
+    fontSize: 20, 
+    fontWeight: 'bold', 
+    marginBottom: 20
+  },
+  modalLabel: {
+    fontSize: 14, 
+    marginBottom: 8
+  },
+  modalInput: {
+    borderWidth: 1, 
+    borderRadius: 8, 
+    padding: 12, 
+    marginBottom: 16, 
+    fontSize: 16
+  }
+});
 
 const styles = StyleSheet.create({
   container: {
