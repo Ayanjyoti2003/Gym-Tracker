@@ -90,7 +90,7 @@ export default function AiChatScreen() {
 
     const allWorkouts = await dualStorage.getAllLocal('workouts');
     allWorkouts.sort((a: any, b: any) => b.timestamp - a.timestamp);
-    setRecentWorkouts(summarizeLogs(allWorkouts.slice(0, 10)));
+    setRecentWorkouts(allWorkouts.slice(0, 10));
 
     let totalVol = 0;
     let totalMins = 0;
@@ -473,7 +473,7 @@ export default function AiChatScreen() {
       {/* ── Chat area ── */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 70}
       >
         <FlatList
