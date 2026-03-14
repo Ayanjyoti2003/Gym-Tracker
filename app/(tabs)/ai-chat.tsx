@@ -90,7 +90,7 @@ export default function AiChatScreen() {
 
     const allWorkouts = await dualStorage.getAllLocal('workouts');
     allWorkouts.sort((a: any, b: any) => b.timestamp - a.timestamp);
-    setRecentWorkouts(allWorkouts.slice(0, 10));
+    setRecentWorkouts(allWorkouts.slice(0, 150));
 
     let totalVol = 0;
     let totalMins = 0;
