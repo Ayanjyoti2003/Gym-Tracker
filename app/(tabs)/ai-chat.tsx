@@ -8,9 +8,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   ActivityIndicator, Animated, Dimensions, FlatList, KeyboardAvoidingView,
-  Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity,
+  Platform, StyleSheet, Text, TextInput, TouchableOpacity,
   TouchableWithoutFeedback, View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Markdown from 'react-native-markdown-display';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -457,7 +458,7 @@ export default function AiChatScreen() {
 
   // ─── Main render ───────────────────────────────────────────
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]}>
       {/* ── Header ── */}
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={openSidebar} style={styles.headerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -472,7 +473,7 @@ export default function AiChatScreen() {
       {/* ── Chat area ── */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior="padding"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 70}
       >
         <FlatList

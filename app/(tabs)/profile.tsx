@@ -114,7 +114,7 @@ export default function ProfileScreen() {
   return (
     <KeyboardAvoidingView 
       style={[styles.container, { backgroundColor: colors.background }]} 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={100}
     >
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
@@ -517,7 +517,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 10,
-    marginBottom: 40,
+    marginBottom: 16,
     elevation: 4,
     shadowColor: '#ff4757',
     shadowOffset: { width: 0, height: 4 },
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     marginTop: 10,
-    marginBottom: 40,
+    marginBottom: 16,
     elevation: 3,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
