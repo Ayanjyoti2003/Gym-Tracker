@@ -442,32 +442,6 @@ export default function ProfileScreen() {
           </View>
         )}
 
-            <TouchableOpacity 
-              style={[styles.analyticsBtn, { backgroundColor: colors.card, borderColor: accentColor }]}
-              onPress={() => router.push('/analytics' as any)}
-            >
-              <MaterialCommunityIcons name="chart-box" size={28} color={accentColor} />
-              <View style={{ marginLeft: 16, flex: 1 }}>
-                <Text style={[styles.analyticsTitle, { color: colors.text }]}>View Analytics</Text>
-                <Text style={[styles.analyticsSub, { color: colors.textMuted }]}>See your workout trends and PRs</Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.analyticsBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => router.push('/feedback' as any)}
-            >
-              <MaterialCommunityIcons name="message-alert-outline" size={28} color={accentColor} />
-              <View style={{ marginLeft: 16, flex: 1 }}>
-                <Text style={[styles.analyticsTitle, { color: colors.text }]}>Help & Feedback</Text>
-                <Text style={[styles.analyticsSub, { color: colors.textMuted }]}>Report a bug or suggest a feature</Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-        )}
-
       </ScrollView>
     </KeyboardAvoidingView>
   );
