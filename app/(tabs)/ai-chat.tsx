@@ -1,6 +1,6 @@
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { chatWithGemini, summarizeLogs } from '@/lib/genai';
+import { chatWithGemini } from '@/lib/genai';
 import { dualStorage } from '@/lib/storage';
 import { db } from '../../firebaseConfig';
 import { collection, query, orderBy, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
@@ -473,7 +473,7 @@ export default function AiChatScreen() {
       {/* ── Chat area ── */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior="padding"
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 70}
       >
         <FlatList

@@ -35,6 +35,19 @@ export const estimateCalories = (
   return Math.round(met * weightKg * hours);
 };
 
+// ─── Helper: Map Exercise to Muscle Group ────────────────────
+const mapExerciseToMuscle = (name: string): string => {
+  const n = name.toLowerCase();
+  if (n.includes('bench') || n.includes('chest') || n.includes('fly')) return 'chest';
+  if (n.includes('squat') || n.includes('leg') || n.includes('lunge')) return 'legs';
+  if (n.includes('deadlift') || n.includes('row') || n.includes('pull') || n.includes('lat')) return 'back';
+  if (n.includes('press') || n.includes('shoulder') || n.includes('lateral raise')) return 'shoulders';
+  if (n.includes('curl') || n.includes('tricep') || n.includes('bicep')) return 'arms';
+  if (n.includes('plank') || n.includes('crunch') || n.includes('core') || n.includes('ab')) return 'core';
+  if (n.includes('treadmill') || n.includes('cycling') || n.includes('running') || n.includes('cardio') || n.includes('jump')) return 'cardio';
+  return 'other';
+};
+
 // ─── Helper: Summarize Logs (Token Reduction) ────────────────
 export const summarizeLogs = (logs: any[]) => {
   if (!logs || logs.length === 0) return [];
@@ -48,7 +61,7 @@ export const summarizeLogs = (logs: any[]) => {
   }> = {};
 
   logs.forEach((log) => {
-    const dateKey = log.date || new Date(log.timestamp).toISOString().split('T')[0];
+    const dateKey = (log.date || new Date(log.timestamp).toISOString()).split('T')[0];
     
     if (!groupedByDate[dateKey]) {
       groupedByDate[dateKey] = {
@@ -59,11 +72,8 @@ export const summarizeLogs = (logs: any[]) => {
       };
     }
 
-    // Add session duration (assuming durationMins on individual exercises are cumulative for the day, or just max)
-    // To prevent massive overcounting if they logged duration per-exercise, we take the max duration seen in a day.
-    if ((log.durationMins || 0) > groupedByDate[dateKey].duration) {
-      groupedByDate[dateKey].duration = log.durationMins || 0;
-    }
+    // Add session duration — sum all exercise durations for the day
+    groupedByDate[dateKey].duration += log.durationMins || 0;
 
     // Map the flat log as an exercise
     groupedByDate[dateKey].exercises.push({
@@ -157,7 +167,7 @@ export const computeDerivedMetrics = (logs: any[]) => {
 
   let volumeTrendPercent = 0;
   if (prevWeekVol > 0) {
-    volumeTrendPercent = Math.round(((lastWeekVol - prevWeekVol) / prevWeekVol) * 100) / 100;
+    volumeTrendPercent = Math.round(((lastWeekVol - prevWeekVol) / prevWeekVol) * 100);
   }
 
   // 3. Strength Progress (major lifts only)
@@ -197,7 +207,7 @@ export const computeDerivedMetrics = (logs: any[]) => {
   // 4. Muscle Group Balance
   const muscleBalance: Record<string, number> = {};
   logs.forEach((log) => {
-    const muscle = (log.muscle || log.muscleGroup || 'other').toLowerCase();
+    const muscle = mapExerciseToMuscle(log.exerciseName || log.name || '');
     muscleBalance[muscle] = (muscleBalance[muscle] || 0) + 1;
   });
 
@@ -225,7 +235,7 @@ export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) =>
     // Sort by most recent first and limit to 10 sessions
     const sortedLogs = [...(recentLogs || [])]
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-      .slice(0, 10);
+      .slice(0, 50);
 
     const weight = profileData?.weight || 70;
     
@@ -390,7 +400,7 @@ export const generateCustomRoutine = async (profileData: any, recentLogs: any[],
     // Sort and limit logs
     const sortedLogs = [...(recentLogs || [])]
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-      .slice(0, 10);
+      .slice(0, 50);
 
     const summarized = summarizeLogs(sortedLogs);
 
