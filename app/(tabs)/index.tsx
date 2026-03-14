@@ -389,21 +389,21 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   exerciseHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginBottom: 10,
   },
   exerciseName: {
     fontSize: 18,
     fontWeight: 'bold',
-    flex: 1,
+    flexShrink: 1,
   },
   badge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
-    marginLeft: 10,
+    alignSelf: 'flex-start',
   },
   badgeText: {
     fontWeight: 'bold',
