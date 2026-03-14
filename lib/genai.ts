@@ -2,8 +2,9 @@
 const GROQ_API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY || 'MISSING_KEY';
 const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY || 'MISSING_KEY';
 
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
-const OPENROUTER_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
+// Llama 3.1 8B has much higher rate limits (30k TPM) vs 70B models (6k TPM)
+const GROQ_MODEL = 'llama-3.1-8b-instant';
+const OPENROUTER_MODEL = 'meta-llama/llama-3.1-8b-instruct:free';
 
 const TIMEOUT_MS = 30000;
 
@@ -23,9 +24,31 @@ const MET_VALUES: Record<string, number> = {
 // ─── Helper: Timeout Wrapper ─────────────────────────────────
 const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms)
+    setTimeout(() => reject(new Error(`AI Request timed out after ${ms}ms`)), ms)
   );
   return Promise.race([promise, timeout]);
+};
+
+/**
+ * Robust JSON parsing that handles preamble text or markdown blocks.
+ */
+const safeParseJSON = (text: string) => {
+  if (!text) return null;
+  try {
+    // Try direct parse first
+    return JSON.parse(text);
+  } catch (e) {
+    try {
+      // Find JSON block { ... } using regex
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+    } catch (innerError) {
+      console.error('safeParseJSON failed:', innerError, 'Text was:', text);
+    }
+    return null;
+  }
 };
 
 // ─── Helper: Estimate Calories ───────────────────────────────
@@ -56,7 +79,6 @@ const mapExerciseToMuscle = (name: string): string => {
 export const summarizeLogs = (logs: any[]) => {
   if (!logs || logs.length === 0) return [];
 
-  // Group flat logs by date to reconstruct "sessions"
   const groupedByDate: Record<string, {
     date: string;
     duration: number;
@@ -71,15 +93,13 @@ export const summarizeLogs = (logs: any[]) => {
       groupedByDate[dateKey] = {
         date: dateKey,
         duration: 0,
-        type: 'mixed', // or logic to determine predominant type
+        type: 'mixed',
         exercises: [],
       };
     }
 
-    // Add session duration — sum all exercise durations for the day
     groupedByDate[dateKey].duration += log.durationMins || 0;
 
-    // Map the flat log as an exercise
     groupedByDate[dateKey].exercises.push({
       name: log.exerciseName || log.name || 'Unknown',
       type: log.type || 'strength',
@@ -98,7 +118,6 @@ export const summarizeLogs = (logs: any[]) => {
           : log.reps || 0,
     });
     
-    // Attempt to set a primary session type from the first exercise seen
     if (groupedByDate[dateKey].type === 'mixed' && log.type) {
        groupedByDate[dateKey].type = log.type;
     }
@@ -119,15 +138,12 @@ export const computeDerivedMetrics = (logs: any[]) => {
 
   if (!logs || logs.length === 0) return defaults;
 
-  // 1. Weekly Workout Frequency (count unique dates in the last 7 days)
   const now = Date.now();
   const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
-  const uniqueDates = new Set<string>();
   const recentUniqueDates = new Set<string>();
   logs.forEach(l => {
     const dateStr = (l.date || new Date(l.timestamp).toISOString()).split('T')[0];
-    uniqueDates.add(dateStr);
     const ts = l.timestamp || new Date(dateStr).getTime();
     if (ts >= sevenDaysAgo) {
       recentUniqueDates.add(dateStr);
@@ -136,7 +152,6 @@ export const computeDerivedMetrics = (logs: any[]) => {
 
   const workoutsPerWeek = recentUniqueDates.size;
 
-  // 2. Training Volume Trend (last week vs previous week)
   const oneWeekAgo = sevenDaysAgo;
   const twoWeeksAgo = now - 14 * 24 * 60 * 60 * 1000;
 
@@ -157,11 +172,8 @@ export const computeDerivedMetrics = (logs: any[]) => {
   logs.forEach((log) => {
     const ts = log.timestamp || (log.date ? new Date(log.date).getTime() : 0);
     const vol = getLogVolume(log);
-    if (ts >= oneWeekAgo) {
-      lastWeekVol += vol;
-    } else if (ts >= twoWeeksAgo) {
-      prevWeekVol += vol;
-    }
+    if (ts >= oneWeekAgo) lastWeekVol += vol;
+    else if (ts >= twoWeeksAgo) prevWeekVol += vol;
   });
 
   let volumeTrendPercent = 0;
@@ -169,13 +181,11 @@ export const computeDerivedMetrics = (logs: any[]) => {
     volumeTrendPercent = Math.round(((lastWeekVol - prevWeekVol) / prevWeekVol) * 100);
   }
 
-  // 3. Strength Progress (major lifts only)
   const majorLifts = ['bench press', 'squat', 'deadlift', 'overhead press'];
   const strengthProgress: Record<string, number> = {};
 
   majorLifts.forEach((liftName) => {
     const liftData: { ts: number; maxWeight: number }[] = [];
-
     logs.forEach((log) => {
       const ts = log.timestamp || (log.date ? new Date(log.date).getTime() : 0);
       if ((log.exerciseName || log.name || '').toLowerCase().includes(liftName)) {
@@ -185,9 +195,7 @@ export const computeDerivedMetrics = (logs: any[]) => {
         } else {
           maxW = log.weight || 0;
         }
-        if (maxW > 0) {
-          liftData.push({ ts, maxWeight: maxW });
-        }
+        if (maxW > 0) liftData.push({ ts, maxWeight: maxW });
       }
     });
 
@@ -203,14 +211,12 @@ export const computeDerivedMetrics = (logs: any[]) => {
     }
   });
 
-  // 4. Muscle Group Balance
   const muscleBalance: Record<string, number> = {};
   logs.forEach((log) => {
     const muscle = mapExerciseToMuscle(log.exerciseName || log.name || '');
     muscleBalance[muscle] = (muscleBalance[muscle] || 0) + 1;
   });
 
-  // 5. Cardio Ratio
   let cardioLogs = 0;
   logs.forEach((log) => {
     if (log.type === 'cardio' || (log.exerciseId === 'treadmill' || log.exerciseId === 'cycling')) {
@@ -264,15 +270,16 @@ const callLLM = async (
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
-      throw new Error(`API error ${response.status}: ${errorBody}`);
+      throw new Error(`[${model}] API error ${response.status}: ${errorBody}`);
     }
 
     const data = await response.json();
     return data.choices?.[0]?.message?.content || '';
   };
 
-  // Try Groq first
+  // 1. Try Groq (Fast & High TPM for 8B)
   try {
+    console.log(`AI Call: Trying Groq (${GROQ_MODEL})...`);
     return await withTimeout(
       makeRequest(
         'https://api.groq.com/openai/v1/chat/completions',
@@ -281,36 +288,42 @@ const callLLM = async (
       ),
       TIMEOUT_MS
     );
-  } catch (groqError) {
-    console.warn('Groq failed, falling back to OpenRouter:', groqError);
+  } catch (groqError: any) {
+    console.warn(`Groq (${GROQ_MODEL}) failed:`, groqError.message || groqError);
+    
+    // If it's a rate limit error, wait a tiny bit or just fallback
+    if (groqError.message?.includes('429')) {
+       console.log('Rate limit hit on Groq, failing over...');
+    }
   }
 
-  // Fallback to OpenRouter
-  return await withTimeout(
-    makeRequest(
-      'https://openrouter.ai/api/v1/chat/completions',
-      OPENROUTER_API_KEY,
-      OPENROUTER_MODEL,
-      { 'HTTP-Referer': 'https://gym-tracker.app' }
-    ),
-    TIMEOUT_MS
-  );
+  // 2. Fallback: OpenRouter (Higher reliability for free models)
+  try {
+    console.log(`AI Call: Trying OpenRouter (${OPENROUTER_MODEL})...`);
+    return await withTimeout(
+      makeRequest(
+        'https://openrouter.ai/api/v1/chat/completions',
+        OPENROUTER_API_KEY,
+        OPENROUTER_MODEL,
+        { 'HTTP-Referer': 'https://gym-tracker.app' }
+      ),
+      TIMEOUT_MS
+    );
+  } catch (orError: any) {
+    console.error(`OpenRouter (${OPENROUTER_MODEL}) fallback failed:`, orError.message || orError);
+    throw orError; // Final throw if both fail
+  }
 };
 
 // ─── AI: Workout Insights (Structured JSON) ──────────────────
 export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) => {
   try {
-    // Sort by most recent first and limit to 50 logs
     const sortedLogs = [...(recentLogs || [])]
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-      .slice(0, 50);
+      .slice(0, 40); // Slightly reduced from 50 to save tokens
 
     const weight = profileData?.weight || 70;
-    
-    // Summarize raw logs into sessions
     const summarized = summarizeLogs(sortedLogs);
-    
-    // The latest grouped session represents the "latest workout"
     const latestSession = summarized[0] || {};
     const calories = estimateCalories(
       weight,
@@ -323,60 +336,33 @@ export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) =>
     const messages: LLMMessage[] = [
       {
         role: 'system',
-        content: `You are an expert AI fitness coach. Analyze workout data and return structured JSON insights. Be specific with numbers, avoid generic encouragement.
+        content: `You are an expert AI fitness coach. Return structured JSON insights.
 
-Safety rules:
-- Never recommend extreme diets, steroid use, or unsafe training loads
-- Always prioritize injury prevention and proper form
-- Avoid extreme training advice`
+Rules:
+- Be specific with numbers
+- Response must be valid JSON
+- Mention "json" to ensure proper formatting`
       },
       {
         role: 'user',
-        content: `User profile:
-Name: ${profileData?.name || 'User'}
-Gender: ${profileData?.gender || 'Unknown'}
-Height: ${profileData?.height || 'Unknown'} cm
-Weight: ${profileData?.weight || 'Unknown'} kg
-Goal: ${profileData?.goals || 'General fitness'}
-
-Estimated calories burned in latest workout: ${calories}
-
-Workout summaries (last ${summarized.length} sessions):
-${JSON.stringify(summarized)}
-
-Derived Metrics:
-${JSON.stringify(metrics)}
-
-Analyze the workout data for patterns:
-- Strength progress trends
-- Possible plateaus
-- Muscle group balance
-- Cardio frequency
-- Training consistency
-- Training volume trends
-
-Use the derived metrics to detect patterns. Prefer concrete observations with numbers whenever possible.
+        content: `User Profile: Name: ${profileData?.name || 'User'}, Goal: ${profileData?.goals || 'Fitness'}
+Workout sessions: ${JSON.stringify(summarized)}
+Metrics: ${JSON.stringify(metrics)}
 
 Return ONLY this JSON structure:
 {
   "caloriesBurned": ${calories},
-  "encouragement": "1–2 sentences of positive feedback referencing specific numbers",
-  "insight": "specific observation from their workout data and derived metrics",
-  "nextFocus": "clear suggestion for their next workout"
+  "encouragement": "concise feedback",
+  "insight": "specific observation",
+  "nextFocus": "suggestion"
 }`
       }
     ];
 
-    const text = await callLLM(messages, { jsonMode: true, temperature: 0.4 });
-
-    try {
-      return JSON.parse(text);
-    } catch {
-      console.error('Insight JSON parse failed:', text);
-      return null;
-    }
+    const text = await callLLM(messages, { jsonMode: true, temperature: 0.3 });
+    return safeParseJSON(text);
   } catch (error) {
-    console.error('AI Insights Error:', error);
+    console.error('AI Insights Procedure Failed:', error);
     return null;
   }
 };
@@ -388,149 +374,68 @@ export const chatWithAI = async (
   chatHistory: { role: string; parts: [{ text: string }] }[] = []
 ) => {
   try {
-    const summarizedLogs = summarizeLogs(context.recentLogs || []);
+    // 1. Limit history to save tokens (last 10 messages)
+    const limitedHistory = chatHistory.slice(-10);
+    
+    // 2. Limit logs/summaries to save tokens
+    const summarizedLogs = summarizeLogs((context.recentLogs || []).slice(0, 30));
 
-    const systemInstruction = `You are Gym Tracker AI, an expert personal trainer and nutritionist built into a fitness app.
+    const systemInstruction = `You are Gym Tracker AI, expert trainer. concise, direct, actionable.
+User: ${context.profile?.name || 'User'}, Goal: ${context.profile?.goals || 'Fitness'}.
+Equipment: ${context.equipment.join(', ') || 'None'}.
+Recent Summary: ${JSON.stringify(summarizedLogs)}.
+Rules: No medical advice. Concise answers.`;
 
-Style:
-- Encouraging and concise
-- Use emojis sparingly
-- Direct and actionable
-
-User Profile:
-Name: ${context.profile?.name || 'Unknown'}
-Gender: ${context.profile?.gender || 'Unknown'}
-Height: ${context.profile?.height || 'Unknown'} cm
-Weight: ${context.profile?.weight || 'Unknown'} ${context.weightUnit}
-Goal: ${context.profile?.goals || 'General fitness'}
-
-Available Equipment:
-${context.equipment.join(', ') || 'Unknown'}
-
-Preferred Weight Unit: ${context.weightUnit}
-
-Recent Workouts Summary:
-${JSON.stringify(summarizedLogs)}
-
-Lifetime Analytics:
-${JSON.stringify(context.analytics)}
-
-Rules:
-- Tailor advice to their goals, recent performance, and available equipment
-- Only recommend exercises possible with available equipment
-- Avoid unsafe weight recommendations
-- Never recommend extreme diets, steroid use, or unsafe training loads
-- Always prioritize injury prevention and proper form
-- Focus on sustainable progress
-
-If BMI > 25 AND training history suggests beginner-level activity,
-recommend prioritizing light cardio and gradual resistance training for the first few weeks.`;
-
-    // Convert chat history from Gemini format to OpenAI format
     const messages: LLMMessage[] = [
       { role: 'system', content: systemInstruction },
     ];
 
-    // Add chat history
-    chatHistory.forEach(msg => {
+    limitedHistory.forEach(msg => {
       messages.push({
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.parts[0].text,
       });
     });
 
-    // Add the current message
     messages.push({ role: 'user', content: message });
 
-    return await callLLM(messages, { temperature: 0.7 });
+    return await callLLM(messages, { temperature: 0.6 });
   } catch (error) {
-    console.error('AI Chat Error:', error);
-    return "Whoops! I'm having trouble connecting right now. Please check your connection and try again.";
+    console.error('AI Chat Procedure Failed:', error);
+    return "Whoops! I'm having trouble connecting to my brain right now. Please try again in secondary.";
   }
 };
 
 // ─── AI: Generate Custom Routine ─────────────────────────────
 export const generateCustomRoutine = async (profileData: any, recentLogs: any[], weightUnit: string = 'kg', focusAreas: string[] = []) => {
   try {
-    // Sort and limit logs
-    const sortedLogs = [...(recentLogs || [])]
-      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-      .slice(0, 50);
-
-    const summarized = summarizeLogs(sortedLogs);
+    const summarized = summarizeLogs((recentLogs || []).slice(0, 30));
 
     const messages: LLMMessage[] = [
       {
         role: 'system',
-        content: `You are an elite AI Personal Trainer. Create highly personalized workout routines. Always respond with valid JSON only.
-
-Safety rules:
-- Never recommend unsafe weight loads
-- Prioritize correct form and injury prevention
-- Avoid extreme training advice`
+        content: 'You are an elite AI Trainer. Return valid JSON only. Mention "json" in prompt.'
       },
       {
         role: 'user',
-        content: `Based on the user's profile and their workout history, create a highly personalized 1-day custom workout routine.
-      
-User Profile:
-- Name: ${profileData?.name || 'User'}
-- Gender: ${profileData?.gender || 'Unknown'}
-- Height: ${profileData?.height || 'Unknown'} cm
-- Weight: ${profileData?.weight || 'Unknown'} ${weightUnit}
-- Preferred Weight Unit: ${weightUnit}
-- Goals: ${profileData?.goals || 'General fitness'}
-- Gym Experience: ${profileData?.experienceValue ? profileData.experienceValue + ' ' + (profileData.experienceUnit || 'months') : 'Beginner / Newbie'}
-- Recent Break/Gap: ${profileData?.gapValue && profileData?.gapUnit !== 'none' ? profileData.gapValue + ' ' + profileData.gapUnit : 'None'}
+        content: `User: ${profileData?.name}, Goals: ${profileData?.goals}, Focus: ${focusAreas.join(', ') || 'Full Body'}.
+History: ${JSON.stringify(summarized)}
 
-Recent Workout Summaries:
-${JSON.stringify(summarized)}
-
-Workout Focus Selected: ${focusAreas.length ? focusAreas.join(', ') : 'Full Body'}
-
-The user selected the above muscle groups for today's workout.
-Prioritize exercises targeting these muscles while optionally including supporting muscles if appropriate.
-Do not include exercises unrelated to the selected focus unless necessary for balance or warm-up.
-Adjust the number of exercises based on the workout focus:
-- Single muscle: 4–5 exercises
-- Two muscles: 5–6 exercises
-- Full Body: 6–8 exercises
-
-INSTRUCTIONS:
-1. Carefully assess their Gym Experience, Recent Break/Gap, and Gender.
-2. If they are a beginner or have a significant recent break, ALWAYS suggest a newbie-friendly, lower-intensity routine to help them (re)start safely.
-3. CRITICAL: Calculate their approximate BMI using their height and weight. If they are a beginner/rookie AND their BMI indicates they are overweight or obese, their routine MUST heavily focus on about 30 minutes of daily cardio to let their body adjust for the first 1-2 months before aggressive weightlifting.
-4. Explicitly suggest specific starting weights (e.g., "10 kg", "Bodyweight", "Adjust based on feel, maybe 5 kg dumbbells") for EACH exercise. Use their past workout history to inform this if available. Otherwise, use your assessment of their experience and gap to estimate a safe starting point.
-5. Briefly explain why this routine was chosen overall, and provide a clear reason and benefit for EACH specific exercise.
-
-You MUST respond ONLY with a valid JSON object matching exactly this schema:
+Return ONLY this JSON:
 {
-  "routineName": "Name of the routine",
-  "description": "Why this routine was suggested for them today based on their gaps/experience",
+  "routineName": "string",
+  "description": "string",
   "exercises": [
-    {
-      "name": "Exercise Name",
-      "sets": "3",
-      "reps": "10-12",
-      "weightSuggestion": "Suggested weight/resistance",
-      "reason": "Why this specific exercise?",
-      "benefit": "What does it do?"
-    }
+    { "name": "string", "sets": "string", "reps": "string", "weightSuggestion": "string", "reason": "string", "benefit": "string" }
   ]
 }`
       }
     ];
 
     const responseText = await callLLM(messages, { jsonMode: true, temperature: 0.5 });
-
-    try {
-      return JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('Failed to parse AI JSON:', responseText);
-      return null;
-    }
+    return safeParseJSON(responseText);
   } catch (error) {
-    console.error('AI Routine Generation Error:', error);
+    console.error('AI Routine Procedure Failed:', error);
     return null;
   }
 };
