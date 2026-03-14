@@ -62,6 +62,8 @@ export default function DashboardScreen() {
     const result = await getWorkoutInsights(profileData, recentLogs);
     if (result) {
       setInsightData(result);
+    } else {
+      Alert.alert('Oops', 'Could not generate insights right now. Please try again.');
     }
     setLoadingInsights(false);
   };
@@ -82,6 +84,8 @@ export default function DashboardScreen() {
     if (generatedRoutine) {
       setCustomRoutine(generatedRoutine);
       await dualStorage.setItem('data', 'custom_routine', generatedRoutine, user.uid);
+    } else {
+      Alert.alert('Oops', 'Could not generate routine right now. Please try again.');
     }
     setSelectedFocus([]);
     setGeneratingRoutine(false);

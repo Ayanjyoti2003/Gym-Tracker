@@ -1,6 +1,6 @@
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { chatWithGemini } from '@/lib/genai';
+import { chatWithAI } from '@/lib/genai';
 import { dualStorage } from '@/lib/storage';
 import { db } from '../../firebaseConfig';
 import { collection, query, orderBy, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
@@ -292,7 +292,7 @@ export default function AiChatScreen() {
       }));
 
     // API Call
-    const aiResponseText = await chatWithGemini(
+    const aiResponseText = await chatWithAI(
       userMessageText,
       { profile: userProfile, recentLogs: recentWorkouts, analytics: analyticsSummary, equipment: gymConfig, weightUnit },
       historyForGemini
