@@ -471,47 +471,11 @@ export default function AiChatScreen() {
       </View>
 
       {/* ── Chat area ── */}
-      {Platform.OS === 'ios' ? (
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior="padding"
-          keyboardVerticalOffset={90}
-        >
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={item => item.id}
-            renderItem={renderMessage}
-            contentContainerStyle={styles.chatContainer}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-            onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          />
-
-          {/* ── Input bar ── */}
-          <View style={[styles.inputContainer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-            <TextInput
-              style={[styles.textInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
-              placeholder="Ask for a routine, diet advice, etc..."
-              placeholderTextColor={colors.textMuted}
-              value={inputText}
-              onChangeText={setInputText}
-              multiline
-              maxLength={500}
-            />
-            <TouchableOpacity
-              style={[styles.sendButton, !inputText.trim() ? { backgroundColor: colors.border } : { backgroundColor: accentColor }]}
-              onPress={sendMessage}
-              disabled={!inputText.trim() || loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#ffffff" />
-              ) : (
-                <MaterialCommunityIcons name="send" size={20} color={inputText.trim() ? "#ffffff" : colors.textMuted} />
-              )}
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      ) : (
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
         <View style={{ flex: 1 }}>
           <FlatList
             ref={flatListRef}
@@ -519,8 +483,10 @@ export default function AiChatScreen() {
             keyExtractor={item => item.id}
             renderItem={renderMessage}
             contentContainerStyle={styles.chatContainer}
+            keyboardShouldPersistTaps="handled"
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            style={{ flex: 1 }}
           />
 
           {/* ── Input bar ── */}
@@ -547,7 +513,7 @@ export default function AiChatScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      )}
+      </KeyboardAvoidingView>
 
       {/* ── Sidebar Overlay ── */}
       {sidebarOpen && (
@@ -670,7 +636,7 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     padding: 12,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 8,
     borderTopWidth: 1,
     alignItems: 'flex-end',
   },
