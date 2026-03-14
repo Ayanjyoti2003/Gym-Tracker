@@ -115,30 +115,25 @@ export const computeDerivedMetrics = (logs: any[]) => {
 
   if (!logs || logs.length === 0) return defaults;
 
-  // 1. Weekly Workout Frequency (count unique dates)
-  const uniqueDates = new Set<string>();
-  logs.forEach(l => {
-    if (l.date) uniqueDates.add(l.date);
-    else if (l.timestamp) uniqueDates.add(new Date(l.timestamp).toISOString().split('T')[0]);
-  });
-  
-  const timestamps = Array.from(uniqueDates)
-    .map((d) => new Date(d).getTime())
-    .filter((t) => t > 0)
-    .sort((a, b) => a - b);
+  // 1. Weekly Workout Frequency (count unique dates in the last 7 days)
+  const now = Date.now();
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
-  let workoutsPerWeek = uniqueDates.size;
-  if (timestamps.length >= 2) {
-    const spanMs = timestamps[timestamps.length - 1] - timestamps[0];
-    const spanWeeks = spanMs / (1000 * 60 * 60 * 24 * 7);
-    if (spanWeeks >= 1) {
-      workoutsPerWeek = Math.round((uniqueDates.size / spanWeeks) * 10) / 10;
+  const uniqueDates = new Set<string>();
+  const recentUniqueDates = new Set<string>();
+  logs.forEach(l => {
+    const dateStr = (l.date || new Date(l.timestamp).toISOString()).split('T')[0];
+    uniqueDates.add(dateStr);
+    const ts = l.timestamp || new Date(dateStr).getTime();
+    if (ts >= sevenDaysAgo) {
+      recentUniqueDates.add(dateStr);
     }
-  }
+  });
+
+  const workoutsPerWeek = recentUniqueDates.size;
 
   // 2. Training Volume Trend (last week vs previous week)
-  const now = Date.now();
-  const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const oneWeekAgo = sevenDaysAgo;
   const twoWeeksAgo = now - 14 * 24 * 60 * 60 * 1000;
 
   const getLogVolume = (log: any): number => {
