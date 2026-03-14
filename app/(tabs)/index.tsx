@@ -134,7 +134,7 @@ export default function DashboardScreen() {
               <View style={[styles.insightRow, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
                 <Text style={styles.insightEmoji}>💪</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.insightLabel, { color: colors.textMuted }]}>Encouragement</Text>
+                  <Text style={[styles.insightLabel, { color: colors.textMuted }]}>Feedback</Text>
                   <Text style={[styles.insightValue, { color: colors.text }]}>{insightData.encouragement}</Text>
                 </View>
               </View>
@@ -145,13 +145,25 @@ export default function DashboardScreen() {
                   <Text style={[styles.insightValue, { color: colors.text }]}>{insightData.insight}</Text>
                 </View>
               </View>
-              <View style={[styles.insightRow, { backgroundColor: colors.cardElevated, borderColor: colors.border, marginBottom: 0 }]}>
+              <View style={[styles.insightRow, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
                 <Text style={styles.insightEmoji}>🎯</Text>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.insightLabel, { color: colors.textMuted }]}>Next Focus</Text>
                   <Text style={[styles.insightValue, { color: colors.text }]}>{insightData.nextFocus}</Text>
                 </View>
               </View>
+              
+              <TouchableOpacity
+                style={[styles.regenerateBtn, { borderColor: colors.border, marginTop: 12 }]}
+                onPress={generateAIInsights}
+                disabled={loadingInsights}
+              >
+                {loadingInsights ? (
+                  <ActivityIndicator color={colors.text} size="small" />
+                ) : (
+                  <Text style={[styles.regenerateBtnText, { color: colors.text }]}>Refresh Insights</Text>
+                )}
+              </TouchableOpacity>
             </View>
           ) : (
             <Text style={[styles.aiText, { color: colors.textMuted }]}>
