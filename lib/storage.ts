@@ -189,5 +189,61 @@ export const dualStorage = {
       console.error(`[Storage] Failed to restore collection ${collectionName}:`, e);
       throw e;
     }
+  },
+
+  /**
+   * Queries Firestore for workouts that have been soft-deleted (within 30 days).
+   */
+  async getDeletedWorkouts(userId: string) {
+    if (!userId) return [];
+    try {
+      const colRef = collection(db, 'users', userId, 'workouts');
+      // We look for anything with a 'deletedAt' field
+      const q = query(colRef, where('deletedAt', '!=', null));
+      const snapshot = await getDocs(q);
+      const deleted: any[] = [];
+      
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.deletedAt) {
+          const deleteDate = new Date(data.deletedAt);
+          if (deleteDate > thirtyDaysAgo) {
+            deleted.push({ id: docSnap.id, ...data });
+          }
+        }
+      });
+      
+      // Sort newest deletion first
+      return deleted.sort((a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime());
+    } catch (e) {
+      console.error(`[Storage] Failed to fetch deleted workouts:`, e);
+      return [];
+    }
+  },
+
+  /**
+   * Restores a soft-deleted workout.
+   */
+  async restoreWorkout(workout: any, userId: string) {
+    if (!userId || !workout.id) return;
+    try {
+      const { deletedAt, ...restoredData } = workout;
+      
+      // 1. Sync to Firestore (remove deletedAt field)
+      const docRef = doc(db, 'users', userId, 'workouts', workout.id);
+      await setDoc(docRef, restoredData); // This overwrites the doc, effectively removing deletedAt
+      
+      // 2. Save back to Local AsyncStorage
+      const localKey = `@gym_tracker_workouts_${workout.id}`;
+      await AsyncStorage.setItem(localKey, JSON.stringify(restoredData));
+      
+      console.log(`[Storage] Workout ${workout.id} restored successfully.`);
+    } catch (e) {
+      console.error(`[Storage] Failed to restore workout ${workout.id}:`, e);
+      throw e;
+    }
   }
 };
