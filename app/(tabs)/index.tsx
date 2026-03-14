@@ -6,8 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-
-const FOCUS_OPTIONS = ['Full Body', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core'];
+const FOCUS_OPTIONS = ['Full Body', 'Chest', 'Back', 'Legs', 'Shoulders', 'Biceps', 'Triceps', 'Core'];
 
 type WorkoutInsight = {
   caloriesBurned: number;
@@ -183,38 +182,37 @@ export default function DashboardScreen() {
             <MaterialCommunityIcons name="lightning-bolt" size={24} color={accentColor} />
             <Text style={[styles.aiTitle, { color: colors.text }]}>Your Custom Routine 🔥</Text>
           </View>
+          {/* Focus Selection Chips */}
+          <Text style={[styles.focusHeader, { color: colors.textMuted, marginTop: 4 }]}>Workout Focus (choose up to 2)</Text>
+          <View style={[styles.chipRow, { marginBottom: 16 }]}>
+            {FOCUS_OPTIONS.map((focus) => {
+              const isActive = selectedFocus.includes(focus);
+              return (
+                <TouchableOpacity
+                  key={focus}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: isActive ? accentColor + '20' : colors.cardElevated,
+                      borderColor: isActive ? accentColor : colors.border,
+                    },
+                  ]}
+                  onPress={() => handleFocusSelect(focus)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.chipText, { color: isActive ? accentColor : colors.textMuted }]}>
+                    {focus}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           {!customRoutine ? (
             <View>
-              <Text style={[styles.aiText, { color: colors.textMuted }]}>
+              <Text style={[styles.aiText, { color: colors.textMuted, marginBottom: 16 }]}>
                 Get a highly personalized 1-day workout routine tailored to your goals, experience, and past performance.
               </Text>
-
-              {/* Focus Selection Chips */}
-              <Text style={[styles.focusHeader, { color: colors.textMuted }]}>Workout Focus (choose up to 2)</Text>
-              <View style={styles.chipRow}>
-                {FOCUS_OPTIONS.map((focus) => {
-                  const isActive = selectedFocus.includes(focus);
-                  return (
-                    <TouchableOpacity
-                      key={focus}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: isActive ? accentColor + '20' : colors.cardElevated,
-                          borderColor: isActive ? accentColor : colors.border,
-                        },
-                      ]}
-                      onPress={() => handleFocusSelect(focus)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.chipText, { color: isActive ? accentColor : colors.textMuted }]}>
-                        {focus}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
 
               <TouchableOpacity
                 style={[styles.generateBtn, { backgroundColor: accentColor }]}
