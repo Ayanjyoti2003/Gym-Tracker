@@ -5,7 +5,7 @@ import { dualStorage } from '@/lib/storage';
 import { db } from '../../firebaseConfig';
 import { collection, query, orderBy, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, Dimensions, FlatList, KeyboardAvoidingView,
   Platform, StyleSheet, Text, TextInput, TouchableOpacity,

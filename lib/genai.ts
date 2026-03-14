@@ -39,28 +39,58 @@ export const estimateCalories = (
 export const summarizeLogs = (logs: any[]) => {
   if (!logs || logs.length === 0) return [];
 
-  return logs.map((session) => ({
-    date: session.date || session.timestamp,
-    duration: session.durationMins || 0,
-    type: session.type || 'strength',
-    exercises: session.exercises?.map((ex: any) => ({
-      name: ex.name || ex.exerciseName || 'Unknown',
-      type: ex.type || 'strength',
-      muscle: ex.muscle || ex.muscleGroup || undefined,
-      sets: ex.setsData?.length || ex.sets || 0,
+  // Group flat logs by date to reconstruct "sessions"
+  const groupedByDate: Record<string, {
+    date: string;
+    duration: number;
+    type: string;
+    exercises: any[];
+  }> = {};
+
+  logs.forEach((log) => {
+    const dateKey = log.date || new Date(log.timestamp).toISOString().split('T')[0];
+    
+    if (!groupedByDate[dateKey]) {
+      groupedByDate[dateKey] = {
+        date: dateKey,
+        duration: 0,
+        type: 'mixed', // or logic to determine predominant type
+        exercises: [],
+      };
+    }
+
+    // Add session duration (assuming durationMins on individual exercises are cumulative for the day, or just max)
+    // To prevent massive overcounting if they logged duration per-exercise, we take the max duration seen in a day.
+    if ((log.durationMins || 0) > groupedByDate[dateKey].duration) {
+      groupedByDate[dateKey].duration = log.durationMins || 0;
+    }
+
+    // Map the flat log as an exercise
+    groupedByDate[dateKey].exercises.push({
+      name: log.exerciseName || log.name || 'Unknown',
+      type: log.type || 'strength',
+      muscle: log.muscle || log.muscleGroup || undefined,
+      sets: log.setsData?.length || log.sets || 0,
       avgWeight:
-        ex.setsData && ex.setsData.length > 0
+        log.setsData && log.setsData.length > 0
           ? Math.round(
-              ex.setsData.reduce((a: number, s: any) => a + (s.weight || 0), 0) /
-                ex.setsData.length
+              log.setsData.reduce((a: number, s: any) => a + (s.weight || 0), 0) /
+                log.setsData.length
             )
-          : ex.weight || 0,
+          : log.weight || 0,
       bestReps:
-        ex.setsData && ex.setsData.length > 0
-          ? Math.max(...ex.setsData.map((s: any) => s.reps || 0))
-          : ex.reps || 0,
-    })) || [],
-  }));
+        log.setsData && log.setsData.length > 0
+          ? Math.max(...log.setsData.map((s: any) => s.reps || 0))
+          : log.reps || 0,
+    });
+    
+    // Attempt to set a primary session type from the first exercise seen
+    if (groupedByDate[dateKey].type === 'mixed' && log.type) {
+       groupedByDate[dateKey].type = log.type;
+    }
+  });
+
+  return Object.values(groupedByDate).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
 // ─── Helper: Compute Derived Metrics ─────────────────────────
@@ -75,18 +105,24 @@ export const computeDerivedMetrics = (logs: any[]) => {
 
   if (!logs || logs.length === 0) return defaults;
 
-  // 1. Weekly Workout Frequency
-  const timestamps = logs
-    .map((l) => l.timestamp || (l.date ? new Date(l.date).getTime() : 0))
+  // 1. Weekly Workout Frequency (count unique dates)
+  const uniqueDates = new Set<string>();
+  logs.forEach(l => {
+    if (l.date) uniqueDates.add(l.date);
+    else if (l.timestamp) uniqueDates.add(new Date(l.timestamp).toISOString().split('T')[0]);
+  });
+  
+  const timestamps = Array.from(uniqueDates)
+    .map((d) => new Date(d).getTime())
     .filter((t) => t > 0)
     .sort((a, b) => a - b);
 
-  let workoutsPerWeek = logs.length;
+  let workoutsPerWeek = uniqueDates.size;
   if (timestamps.length >= 2) {
     const spanMs = timestamps[timestamps.length - 1] - timestamps[0];
     const spanWeeks = spanMs / (1000 * 60 * 60 * 24 * 7);
     if (spanWeeks >= 1) {
-      workoutsPerWeek = Math.round((logs.length / spanWeeks) * 10) / 10;
+      workoutsPerWeek = Math.round((uniqueDates.size / spanWeeks) * 10) / 10;
     }
   }
 
@@ -95,27 +131,23 @@ export const computeDerivedMetrics = (logs: any[]) => {
   const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
   const twoWeeksAgo = now - 14 * 24 * 60 * 60 * 1000;
 
-  const getVolume = (session: any): number => {
+  const getLogVolume = (log: any): number => {
     let vol = 0;
-    if (session.exercises) {
-      session.exercises.forEach((ex: any) => {
-        if (ex.setsData) {
-          ex.setsData.forEach((s: any) => {
-            vol += (s.reps || 0) * (s.weight > 0 ? s.weight : 1);
-          });
-        } else {
-          vol += (ex.sets || 0) * (ex.reps || 0) * (ex.weight > 0 ? ex.weight : 1);
-        }
+    if (log.setsData && log.setsData.length > 0) {
+      log.setsData.forEach((s: any) => {
+        vol += (s.reps || 0) * (s.weight > 0 ? s.weight : 1);
       });
+    } else {
+      vol += (log.sets || 0) * (log.reps || 0) * (log.weight > 0 ? log.weight : 1);
     }
     return vol;
   };
 
   let lastWeekVol = 0;
   let prevWeekVol = 0;
-  logs.forEach((session) => {
-    const ts = session.timestamp || (session.date ? new Date(session.date).getTime() : 0);
-    const vol = getVolume(session);
+  logs.forEach((log) => {
+    const ts = log.timestamp || (log.date ? new Date(log.date).getTime() : 0);
+    const vol = getLogVolume(log);
     if (ts >= oneWeekAgo) {
       lastWeekVol += vol;
     } else if (ts >= twoWeeksAgo) {
@@ -125,7 +157,7 @@ export const computeDerivedMetrics = (logs: any[]) => {
 
   let volumeTrendPercent = 0;
   if (prevWeekVol > 0) {
-    volumeTrendPercent = Math.round(((lastWeekVol - prevWeekVol) / prevWeekVol) * 1000) / 10;
+    volumeTrendPercent = Math.round(((lastWeekVol - prevWeekVol) / prevWeekVol) * 100) / 100;
   }
 
   // 3. Strength Progress (major lifts only)
@@ -135,21 +167,19 @@ export const computeDerivedMetrics = (logs: any[]) => {
   majorLifts.forEach((liftName) => {
     const liftData: { ts: number; maxWeight: number }[] = [];
 
-    logs.forEach((session) => {
-      const ts = session.timestamp || (session.date ? new Date(session.date).getTime() : 0);
-      session.exercises?.forEach((ex: any) => {
-        if ((ex.name || ex.exerciseName || '').toLowerCase().includes(liftName)) {
-          let maxW = 0;
-          if (ex.setsData) {
-            maxW = Math.max(...ex.setsData.map((s: any) => s.weight || 0));
-          } else {
-            maxW = ex.weight || 0;
-          }
-          if (maxW > 0) {
-            liftData.push({ ts, maxWeight: maxW });
-          }
+    logs.forEach((log) => {
+      const ts = log.timestamp || (log.date ? new Date(log.date).getTime() : 0);
+      if ((log.exerciseName || log.name || '').toLowerCase().includes(liftName)) {
+        let maxW = 0;
+        if (log.setsData && log.setsData.length > 0) {
+          maxW = Math.max(...log.setsData.map((s: any) => s.weight || 0));
+        } else {
+          maxW = log.weight || 0;
         }
-      });
+        if (maxW > 0) {
+          liftData.push({ ts, maxWeight: maxW });
+        }
+      }
     });
 
     if (liftData.length >= 2) {
@@ -158,7 +188,6 @@ export const computeDerivedMetrics = (logs: any[]) => {
       const latest = liftData[liftData.length - 1].maxWeight;
       if (first > 0) {
         const key = liftName.replace(/\s+/g, '');
-        // camelCase the key
         const camelKey = key.charAt(0).toLowerCase() + key.slice(1);
         strengthProgress[camelKey] = Math.round(((latest - first) / first) * 100);
       }
@@ -167,28 +196,19 @@ export const computeDerivedMetrics = (logs: any[]) => {
 
   // 4. Muscle Group Balance
   const muscleBalance: Record<string, number> = {};
-  logs.forEach((session) => {
-    const sessionMuscles = new Set<string>();
-    session.exercises?.forEach((ex: any) => {
-      const muscle = (ex.muscle || ex.muscleGroup || 'other').toLowerCase();
-      sessionMuscles.add(muscle);
-    });
-    sessionMuscles.forEach((muscle) => {
-      muscleBalance[muscle] = (muscleBalance[muscle] || 0) + 1;
-    });
+  logs.forEach((log) => {
+    const muscle = (log.muscle || log.muscleGroup || 'other').toLowerCase();
+    muscleBalance[muscle] = (muscleBalance[muscle] || 0) + 1;
   });
 
   // 5. Cardio Ratio
-  let cardioSessions = 0;
-  logs.forEach((session) => {
-    if (session.type === 'cardio') {
-      cardioSessions++;
-    } else if (session.exercises) {
-      const allCardio = session.exercises.every((ex: any) => ex.type === 'cardio');
-      if (allCardio && session.exercises.length > 0) cardioSessions++;
+  let cardioLogs = 0;
+  logs.forEach((log) => {
+    if (log.type === 'cardio' || (log.exerciseId === 'treadmill' || log.exerciseId === 'cycling')) {
+      cardioLogs++;
     }
   });
-  const cardioRatio = logs.length > 0 ? Math.round((cardioSessions / logs.length) * 100) : 0;
+  const cardioRatio = logs.length > 0 ? Math.round((cardioLogs / logs.length) * 100) : 0;
 
   return {
     workoutsPerWeek,
@@ -208,14 +228,18 @@ export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) =>
       .slice(0, 10);
 
     const weight = profileData?.weight || 70;
-    const latestSession = sortedLogs[0] || {};
+    
+    // We must summarize the raw logs first so that we get real "sessions" with aggregated durations
+    const summarized = summarizeLogs(sortedLogs);
+    
+    // The latest grouped session represents the "latest workout"
+    const latestSession = summarized[0] || {};
     const calories = estimateCalories(
       weight,
-      latestSession?.durationMins || 30,
-      latestSession?.type || 'strength'
+      latestSession?.duration || 30, // Get the grouped duration 
+      latestSession?.type || 'strength' // Get the group type
     );
 
-    const summarized = summarizeLogs(sortedLogs);
     const metrics = computeDerivedMetrics(sortedLogs);
 
     const prompt = `
