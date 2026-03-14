@@ -181,12 +181,7 @@ export default function AiChatScreen() {
       updatedAt: Date.now(),
     };
 
-    // Save to Firestore
-    await setDoc(
-      doc(db, 'users', user.uid, 'chat_sessions', newId),
-      newSession
-    ).catch(console.error);
-
+    // Local-only state update (Deferred persistence until first message)
     const base = currentSessions ?? sessions;
     setSessions([newSession, ...base]);
     setActiveChatId(newId);
@@ -266,14 +261,17 @@ export default function AiChatScreen() {
         ? userMessageText.substring(0, 30) + '...'
         : userMessageText;
       const updatedSession = { ...currentSession, title: newTitle, updatedAt: Date.now() };
-      setDoc(
+      
+      // PERSIST SESSION TO FIRESTORE (First time)
+      await setDoc(
         doc(db, 'users', user.uid, 'chat_sessions', activeChatId),
         updatedSession
       ).catch(console.error);
+
       setSessions(prev => prev.map(s => s.id === activeChatId ? updatedSession : s));
-    } else {
-      // Just update the timestamp
-      const updatedSession = { ...currentSession!, updatedAt: Date.now() };
+    } else if (currentSession) {
+      // Just update the timestamp for existing session
+      const updatedSession = { ...currentSession, updatedAt: Date.now() };
       setDoc(
         doc(db, 'users', user.uid, 'chat_sessions', activeChatId),
         updatedSession
