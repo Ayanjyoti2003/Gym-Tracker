@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, Image } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -6,6 +6,8 @@ import { dualStorage } from '@/lib/storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../../firebaseConfig';
 
 const DEFAULT_AVATARS = [
   'https://api.dicebear.com/7.x/avataaars/png?seed=Felix&backgroundColor=ff4757',
@@ -40,6 +42,8 @@ export default function ProfileScreen() {
   const [gender, setGender] = useState('Male');
   
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [createdAt, setCreatedAt] = useState<number | null>(null);
+  const [allWorkouts, setAllWorkouts] = useState<any[]>([]);
 
   useEffect(() => {
     loadProfile();
@@ -49,6 +53,9 @@ export default function ProfileScreen() {
     if (!user) return;
     setLoading(true);
     const profileData = await dualStorage.getItem('data', 'profile', user.uid);
+    const workouts = await dualStorage.getAllLocal('workouts');
+    setAllWorkouts(workouts || []);
+
     if (profileData && Object.keys(profileData).length > 0) {
       setName(profileData.name || '');
       setHeight(profileData.height || '');
@@ -60,18 +67,77 @@ export default function ProfileScreen() {
       setGapUnit(profileData.gapUnit || 'none');
       setGender(profileData.gender || 'Male');
       setAvatar(profileData.avatar || DEFAULT_AVATARS[0]);
+      setCreatedAt(profileData.createdAt || Date.now());
     } else {
       setAvatar(DEFAULT_AVATARS[0]);
+      setCreatedAt(Date.now());
       setIsEditing(true); // First time, open in edit mode
     }
     setLoading(false);
+  };
+
+  // ─── Dynamic Experience Calculation ────────────────────────
+  const dynamicExperience = useMemo(() => {
+    if (!experienceValue) return 'Newbie';
+    
+    // 1. Convert baseline to days
+    const baseVal = parseInt(experienceValue) || 0;
+    let baseDays = 0;
+    if (experienceUnit === 'weeks') baseDays = baseVal * 7;
+    else if (experienceUnit === 'months') baseDays = baseVal * 30;
+    else if (experienceUnit === 'years') baseDays = baseVal * 365;
+    else baseDays = baseVal;
+
+    // 2. Count unique workout dates AFTER profile creation
+    // This prevents double counting historical data already in baseline
+    const uniqueDates = new Set<string>();
+    allWorkouts.forEach(w => {
+      const ts = w.timestamp || (w.date ? new Date(w.date).getTime() : 0);
+      if (createdAt && ts > createdAt) {
+        const dateStr = new Date(ts).toISOString().split('T')[0];
+        uniqueDates.add(dateStr);
+      }
+    });
+
+    const totalDays = baseDays + uniqueDates.size;
+
+    // 3. Format back to highest appropriate unit
+    if (totalDays >= 365) return `${Math.floor(totalDays / 365)} years`;
+    if (totalDays >= 30) return `${Math.floor(totalDays / 30)} months`;
+    if (totalDays >= 7) return `${Math.floor(totalDays / 7)} weeks`;
+    return `${totalDays} days`;
+  }, [experienceValue, experienceUnit, allWorkouts, createdAt]);
+
+  const uploadImageAsync = async (uri: string) => {
+    if (!user) return uri;
+    try {
+      // If it's already a cloud URL or relative path, skip
+      if (uri.startsWith('http') || !uri.includes('://')) return uri;
+
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const storageRef = ref(storage, `avatars/${user.uid}`);
+      
+      await uploadBytes(storageRef, blob);
+      const downloadURL = await getDownloadURL(storageRef);
+      return downloadURL;
+    } catch (e) {
+      console.error('Upload failed:', e);
+      return uri; // Fallback to local
+    }
   };
 
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
     try {
-      await dualStorage.setItem('data', 'profile', {
+      let finalAvatar = avatar;
+      if (avatar && (avatar.startsWith('file://') || avatar.startsWith('content://'))) {
+        finalAvatar = await uploadImageAsync(avatar);
+        setAvatar(finalAvatar);
+      }
+
+      const profilePayload = {
         name,
         height,
         weight,
@@ -81,8 +147,11 @@ export default function ProfileScreen() {
         gapValue,
         gapUnit,
         gender,
-        avatar,
-      }, user.uid);
+        avatar: finalAvatar,
+        createdAt: createdAt || Date.now(),
+      };
+
+      await dualStorage.setItem('data', 'profile', profilePayload, user.uid);
       setIsEditing(false); // Close edit mode after saving
     } catch (e) {
       Alert.alert('Error', 'Failed to save profile. Please try again.');
@@ -244,7 +313,7 @@ export default function ProfileScreen() {
 
             {/* Experience Group */}
             <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.textMuted }]}>Gym Experience</Text>
+              <Text style={[styles.label, { color: colors.textMuted }]}>Gym Experience Baseline</Text>
               <View style={styles.row}>
                 <TextInput 
                   style={[styles.input, { flex: 1, marginRight: 10, backgroundColor: colors.cardElevated, color: colors.text, borderColor: colors.border }]} 
@@ -266,6 +335,7 @@ export default function ProfileScreen() {
                   ))}
                 </View>
               </View>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>This is your experience BEFORE using the app. We add your logged days to this baseline automatically.</Text>
             </View>
 
             {/* Break / Gap Group */}
@@ -337,14 +407,40 @@ export default function ProfileScreen() {
 
             <View style={styles.row}>
               <View style={[styles.infoCard, { flex: 1, marginRight: 10, backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Experience</Text>
-                <Text style={[styles.infoValue, { color: colors.text }]}>{experienceValue ? `${experienceValue} ${experienceUnit}` : 'Newbie'}</Text>
+                <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Experience (Dynamic)</Text>
+                <Text style={[styles.infoValue, { color: colors.text }]}>{dynamicExperience}</Text>
               </View>
               <View style={[styles.infoCard, { flex: 1, marginLeft: 10, backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Recent Gap</Text>
                 <Text style={[styles.infoValue, { color: colors.text }]}>{(gapValue && gapUnit !== 'none') ? `${gapValue} ${gapUnit}` : 'None'}</Text>
               </View>
             </View>
+
+            <TouchableOpacity 
+              style={[styles.analyticsBtn, { backgroundColor: colors.card, borderColor: accentColor }]}
+              onPress={() => router.push('/analytics' as any)}
+            >
+              <MaterialCommunityIcons name="chart-box" size={28} color={accentColor} />
+              <View style={{ marginLeft: 16, flex: 1 }}>
+                <Text style={[styles.analyticsTitle, { color: colors.text }]}>View Analytics</Text>
+                <Text style={[styles.analyticsSub, { color: colors.textMuted }]}>See your workout trends and PRs</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.analyticsBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push('/feedback' as any)}
+            >
+              <MaterialCommunityIcons name="message-alert-outline" size={28} color={accentColor} />
+              <View style={{ marginLeft: 16, flex: 1 }}>
+                <Text style={[styles.analyticsTitle, { color: colors.text }]}>Help & Feedback</Text>
+                <Text style={[styles.analyticsSub, { color: colors.textMuted }]}>Report a bug or suggest a feature</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
 
             <TouchableOpacity 
               style={[styles.analyticsBtn, { backgroundColor: colors.card, borderColor: accentColor }]}
