@@ -87,8 +87,16 @@ export const summarizeLogs = (logs: any[]) => {
   }> = {};
 
   logs.forEach((log) => {
-    const dateKey = (log.date || new Date(log.timestamp).toISOString()).split('T')[0];
+    // Priority: log.date (string) > log.timestamp (number) > fallback
+    let dateKey = 'Unknown';
+    if (log.date) {
+      dateKey = log.date.split('T')[0];
+    } else if (log.timestamp) {
+      dateKey = new Date(log.timestamp).toISOString().split('T')[0];
+    }
     
+    if (dateKey === 'Unknown') return;
+
     if (!groupedByDate[dateKey]) {
       groupedByDate[dateKey] = {
         date: dateKey,
@@ -138,22 +146,30 @@ export const computeDerivedMetrics = (logs: any[]) => {
 
   if (!logs || logs.length === 0) return defaults;
 
-  const now = Date.now();
-  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const startOfSevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  startOfSevenDaysAgo.setHours(0, 0, 0, 0);
 
   const recentUniqueDates = new Set<string>();
   logs.forEach(l => {
-    const dateStr = (l.date || new Date(l.timestamp).toISOString()).split('T')[0];
-    const ts = l.timestamp || new Date(dateStr).getTime();
-    if (ts >= sevenDaysAgo) {
-      recentUniqueDates.add(dateStr);
+    let logDate: Date;
+    if (l.date) {
+        logDate = new Date(l.date);
+    } else if (l.timestamp) {
+        logDate = new Date(l.timestamp);
+    } else {
+        return;
+    }
+
+    if (logDate >= startOfSevenDaysAgo) {
+      recentUniqueDates.add(logDate.toISOString().split('T')[0]);
     }
   });
 
   const workoutsPerWeek = recentUniqueDates.size;
 
-  const oneWeekAgo = sevenDaysAgo;
-  const twoWeeksAgo = now - 14 * 24 * 60 * 60 * 1000;
+  const oneWeekAgo = startOfSevenDaysAgo.getTime();
+  const twoWeeksAgo = now.getTime() - 14 * 24 * 60 * 60 * 1000;
 
   const getLogVolume = (log: any): number => {
     let vol = 0;
@@ -290,11 +306,6 @@ const callLLM = async (
     );
   } catch (groqError: any) {
     console.warn(`Groq (${GROQ_MODEL}) failed:`, groqError.message || groqError);
-    
-    // If it's a rate limit error, wait a tiny bit or just fallback
-    if (groqError.message?.includes('429')) {
-       console.log('Rate limit hit on Groq, failing over...');
-    }
   }
 
   // 2. Fallback: OpenRouter (Higher reliability for free models)
@@ -311,19 +322,29 @@ const callLLM = async (
     );
   } catch (orError: any) {
     console.error(`OpenRouter (${OPENROUTER_MODEL}) fallback failed:`, orError.message || orError);
-    throw orError; // Final throw if both fail
+    throw orError;
   }
 };
 
 // ─── AI: Workout Insights (Structured JSON) ──────────────────
 export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) => {
   try {
+    // Increased raw log limit from 30 to 150 to capture full history
     const sortedLogs = [...(recentLogs || [])]
-      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-      .slice(0, 40); // Slightly reduced from 50 to save tokens
+      .sort((a, b) => (b.timestamp || a.date ? new Date(a.date).getTime() : 0) - (a.timestamp || b.date ? new Date(b.date).getTime() : 0)) // Fixed sort order to be descending
+      .sort((a, b) => {
+        const tsA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
+        const tsB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
+        return tsB - tsA;
+      })
+      .slice(0, 150);
 
     const weight = profileData?.weight || 70;
     const summarized = summarizeLogs(sortedLogs);
+    
+    // Slice sessions to last 15 for the prompt to keep context clean but deep
+    const displayedSessions = summarized.slice(0, 15);
+    
     const latestSession = summarized[0] || {};
     const calories = estimateCalories(
       weight,
@@ -336,24 +357,27 @@ export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) =>
     const messages: LLMMessage[] = [
       {
         role: 'system',
-        content: `You are an expert AI fitness coach. Return structured JSON insights.
+        content: `You are an expert AI fitness coach. Return structured JSON.
+Current date: ${new Date().toLocaleDateString()}.
+Data Range provided: ${displayedSessions.length > 0 ? displayedSessions[displayedSessions.length - 1].date : 'N/A'} to ${displayedSessions[0]?.date || 'N/A'}.
 
-Rules:
-- Be specific with numbers
-- Response must be valid JSON
-- Mention "json" to ensure proper formatting`
+Instructions:
+- Analyze sessions and derived metrics carefully.
+- "workoutsPerWeek" is the count of unique exercise days in the last 7 days.
+- If the user had a gap, mention it gently.
+- Return valid JSON only.`
       },
       {
         role: 'user',
-        content: `User Profile: Name: ${profileData?.name || 'User'}, Goal: ${profileData?.goals || 'Fitness'}
-Workout sessions: ${JSON.stringify(summarized)}
-Metrics: ${JSON.stringify(metrics)}
+        content: `User: ${profileData?.name || 'User'}, Goal: ${profileData?.goals || 'Fitness'}
+Recent Sessions: ${JSON.stringify(displayedSessions)}
+Derived Metrics: ${JSON.stringify(metrics)}
 
 Return ONLY this JSON structure:
 {
   "caloriesBurned": ${calories},
   "encouragement": "concise feedback",
-  "insight": "specific observation",
+  "insight": "specific observation based on metrics and sessions",
   "nextFocus": "suggestion"
 }`
       }
@@ -374,17 +398,31 @@ export const chatWithAI = async (
   chatHistory: { role: string; parts: [{ text: string }] }[] = []
 ) => {
   try {
-    // 1. Limit history to save tokens (last 10 messages)
     const limitedHistory = chatHistory.slice(-10);
     
-    // 2. Limit logs/summaries to save tokens
-    const summarizedLogs = summarizeLogs((context.recentLogs || []).slice(0, 30));
+    // Increased raw log limit to 150 to ensure historical access
+    const sortedLogs = [...(context.recentLogs || [])].sort((a, b) => {
+        const tsA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
+        const tsB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
+        return tsB - tsA;
+    }).slice(0, 150);
 
-    const systemInstruction = `You are Gym Tracker AI, expert trainer. concise, direct, actionable.
-User: ${context.profile?.name || 'User'}, Goal: ${context.profile?.goals || 'Fitness'}.
+    const summarizedLogs = summarizeLogs(sortedLogs);
+    const displayedSessions = summarizedLogs.slice(0, 15);
+
+    const systemInstruction = `You are Gym Tracker AI, expert trainer.
+Today's date: ${new Date().toLocaleDateString()}.
+User Profile: ${context.profile?.name || 'User'}, Goal: ${context.profile?.goals || 'Fitness'}.
 Equipment: ${context.equipment.join(', ') || 'None'}.
-Recent Summary: ${JSON.stringify(summarizedLogs)}.
-Rules: No medical advice. Concise answers.`;
+
+Workout History (${displayedSessions.length} recent sessions):
+${JSON.stringify(displayedSessions)}
+
+Rules:
+- You HAVE access to logs from ${displayedSessions.length > 0 ? displayedSessions[displayedSessions.length - 1].date : 'no historical'} until ${displayedSessions[0]?.date || 'today'}.
+- Use specific dates in your answers.
+- If asked about older data, check the history provided above.
+- Concise and direct answers. No medical advice.`;
 
     const messages: LLMMessage[] = [
       { role: 'system', content: systemInstruction },
@@ -402,14 +440,20 @@ Rules: No medical advice. Concise answers.`;
     return await callLLM(messages, { temperature: 0.6 });
   } catch (error) {
     console.error('AI Chat Procedure Failed:', error);
-    return "Whoops! I'm having trouble connecting to my brain right now. Please try again in secondary.";
+    return "Whoops! I'm having trouble connecting to my brain right now. Please try again soon.";
   }
 };
 
 // ─── AI: Generate Custom Routine ─────────────────────────────
 export const generateCustomRoutine = async (profileData: any, recentLogs: any[], weightUnit: string = 'kg', focusAreas: string[] = []) => {
   try {
-    const summarized = summarizeLogs((recentLogs || []).slice(0, 30));
+    const sortedLogs = [...(recentLogs || [])].sort((a, b) => {
+        const tsA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
+        const tsB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
+        return tsB - tsA;
+    }).slice(0, 100);
+
+    const summarized = summarizeLogs(sortedLogs).slice(0, 10);
 
     const messages: LLMMessage[] = [
       {
@@ -419,7 +463,7 @@ export const generateCustomRoutine = async (profileData: any, recentLogs: any[],
       {
         role: 'user',
         content: `User: ${profileData?.name}, Goals: ${profileData?.goals}, Focus: ${focusAreas.join(', ') || 'Full Body'}.
-History: ${JSON.stringify(summarized)}
+History Summary: ${JSON.stringify(summarized)}
 
 Return ONLY this JSON:
 {
