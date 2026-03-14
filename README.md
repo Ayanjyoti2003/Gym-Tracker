@@ -76,7 +76,8 @@ Designed with a modern dark UI, Gym Tracker helps users stay consistent with the
 
 ### AI Integration
 
-* Google Gemini AI API
+* Groq API – Primary LLM provider powering the AI chatbot with ultra-fast inference.
+* OpenRouter API – Fallback provider ensuring uninterrupted responses if the primary API reaches rate limits.
 
 ### Analytics
 
