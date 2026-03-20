@@ -103,6 +103,10 @@ export default function LogWorkoutModal() {
         timestamp: Date.now()
       };
 
+      if (selectedOptions.length > 0) {
+        payload.selectedOptions = selectedOptions;
+      }
+
       if (isCardio) {
         payload.speed = speedVal; // Kept as string to allow "3-5"
         payload.incline = inclineVal; // Kept as string to allow "0-9"
@@ -110,7 +114,6 @@ export default function LogWorkoutModal() {
         if (isBattleRopes) {
           payload.sets = Number(sets);
           payload.reps = Number(reps);
-          payload.selectedOptions = selectedOptions;
         }
       } else {
         payload.sets = Number(sets);

@@ -45,7 +45,7 @@ export const MASTER_EXERCISES: ExerciseDef[] = [
   // --- Shoulders ---
   { id: 'overhead_press', name: 'Overhead Press', category: 'Shoulders', icon: 'weight-lifter', type: 'weight' },
   { id: 'arnold_press', name: 'Arnold Press', category: 'Shoulders', icon: 'dumbbell', type: 'weight' },
-  { id: 'lateral_raise', name: 'Lateral Raise', category: 'Shoulders', icon: 'arm-flex-outline', type: 'weight' },
+  { id: 'lateral_raise', name: 'Lateral Raise', category: 'Shoulders', icon: 'arm-flex-outline', type: 'weight', options: ['Dumbbell', 'Cable', 'Machine', 'ISO-Lateral Machine'] },
   { id: 'front_raise', name: 'Front Raise', category: 'Shoulders', icon: 'dumbbell', type: 'weight' },
   { id: 'reverse_pec_deck', name: 'Reverse Pec Deck', category: 'Shoulders', icon: 'arm-flex', type: 'weight' },
   { id: 'shoulder_press_machine', name: 'Shoulder Press Machine', category: 'Shoulders', icon: 'car-seat-cooler', type: 'weight' },

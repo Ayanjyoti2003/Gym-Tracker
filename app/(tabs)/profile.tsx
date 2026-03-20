@@ -67,7 +67,16 @@ export default function ProfileScreen() {
       setGapUnit(profileData.gapUnit || 'none');
       setGender(profileData.gender || 'Male');
       setAvatar(profileData.avatar || DEFAULT_AVATARS[0]);
-      setCreatedAt(profileData.createdAt || Date.now());
+      
+      let initialCreatedAt = profileData.createdAt;
+      if (!initialCreatedAt && workouts && workouts.length > 0) {
+        // Fallback for older profiles without createdAt: use earliest workout date
+        initialCreatedAt = workouts.reduce((earliest: number, w: any) => {
+          const ts = w.timestamp || (w.date ? new Date(w.date).getTime() : 0);
+          return (ts > 0 && ts < earliest) ? ts : earliest;
+        }, Date.now());
+      }
+      setCreatedAt(initialCreatedAt || Date.now());
     } else {
       setAvatar(DEFAULT_AVATARS[0]);
       setCreatedAt(Date.now());
@@ -91,15 +100,29 @@ export default function ProfileScreen() {
     // 2. Count unique workout dates AFTER profile creation
     // This prevents double counting historical data already in baseline
     const uniqueDates = new Set<string>();
+    let createdDateStr = '';
+    if (createdAt) {
+      createdDateStr = new Date(createdAt).toISOString().split('T')[0];
+    }
+    
     allWorkouts.forEach(w => {
       const ts = w.timestamp || (w.date ? new Date(w.date).getTime() : 0);
-      if (createdAt && ts > createdAt) {
+      if (ts > 0) {
         const dateStr = new Date(ts).toISOString().split('T')[0];
-        uniqueDates.add(dateStr);
+        // Count if workout is on or after the DAY of createdAt (prevent same-day misses)
+        if (!createdAt || dateStr >= createdDateStr) {
+          uniqueDates.add(dateStr);
+        }
       }
     });
 
-    const totalDays = baseDays + uniqueDates.size;
+    // 3. Subtract gap breaks
+    const gapVal = parseInt(gapValue) || 0;
+    let gapDays = 0;
+    if (gapUnit === 'weeks') gapDays = gapVal * 7;
+    else if (gapUnit === 'months') gapDays = gapVal * 30;
+
+    const totalDays = Math.max(0, baseDays + uniqueDates.size - gapDays);
 
     // 3. Format back to highest appropriate unit
     if (totalDays >= 365) return `${Math.floor(totalDays / 365)} years`;

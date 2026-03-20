@@ -94,7 +94,7 @@ export const summarizeLogs = (logs: any[]) => {
     } else if (log.timestamp) {
       dateKey = new Date(log.timestamp).toISOString().split('T')[0];
     }
-    
+
     if (dateKey === 'Unknown') return;
 
     if (!groupedByDate[dateKey]) {
@@ -116,18 +116,19 @@ export const summarizeLogs = (logs: any[]) => {
       avgWeight:
         log.setsData && log.setsData.length > 0
           ? Math.round(
-              log.setsData.reduce((a: number, s: any) => a + (s.weight || 0), 0) /
-                log.setsData.length
-            )
+            log.setsData.reduce((a: number, s: any) => a + (s.weight || 0), 0) /
+            log.setsData.length
+          )
           : log.weight || 0,
       bestReps:
         log.setsData && log.setsData.length > 0
           ? Math.max(...log.setsData.map((s: any) => s.reps || 0))
           : log.reps || 0,
+      options: log.selectedOptions && log.selectedOptions.length > 0 ? log.selectedOptions : undefined,
     });
-    
+
     if (groupedByDate[dateKey].type === 'mixed' && log.type) {
-       groupedByDate[dateKey].type = log.type;
+      groupedByDate[dateKey].type = log.type;
     }
   });
 
@@ -154,11 +155,11 @@ export const computeDerivedMetrics = (logs: any[]) => {
   logs.forEach(l => {
     let logDate: Date;
     if (l.date) {
-        logDate = new Date(l.date);
+      logDate = new Date(l.date);
     } else if (l.timestamp) {
-        logDate = new Date(l.timestamp);
+      logDate = new Date(l.timestamp);
     } else {
-        return;
+      return;
     }
 
     if (logDate >= startOfSevenDaysAgo) {
@@ -341,14 +342,14 @@ export const getWorkoutInsights = async (profileData: any, recentLogs: any[]) =>
 
     const weight = profileData?.weight || 70;
     const summarized = summarizeLogs(sortedLogs);
-    
+
     // Slice sessions to last 15 for the prompt to keep context clean but deep
-    const displayedSessions = summarized.slice(0, 15);
-    
+    const displayedSessions = summarized.slice(0, 150);
+
     const latestSession = summarized[0] || {};
     const calories = estimateCalories(
       weight,
-      latestSession?.duration || 30,
+      latestSession?.duration || 60,
       latestSession?.type || 'strength'
     );
 
@@ -369,6 +370,7 @@ Safety Rules:
 
 Instructions:
 - Analyze sessions and derived metrics carefully.
+- Pay special attention to the "workoutsPerWeek" metric. IF workoutsPerWeek > 1, DO NOT say "first workout of the week" under any circumstances.
 - Use the user's physical profile (Weight: ${weight}kg, Height: ${profileData?.height || 'N/A'}cm, Gender: ${profileData?.gender || 'N/A'}) to personalize calorie and intensity insights.
 - "workoutsPerWeek" is the count of unique exercise days in the last 7 days.
 - If the user had a gap, mention it gently and suggest a re-entry strategy.
@@ -406,12 +408,12 @@ export const chatWithAI = async (
 ) => {
   try {
     const limitedHistory = chatHistory.slice(-10);
-    
+
     // Increased raw log limit to 150 to ensure historical access
     const sortedLogs = [...(context.recentLogs || [])].sort((a, b) => {
-        const tsA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
-        const tsB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
-        return tsB - tsA;
+      const tsA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
+      const tsB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
+      return tsB - tsA;
     }).slice(0, 150);
 
     const summarizedLogs = summarizeLogs(sortedLogs);
@@ -463,9 +465,9 @@ Log Reference Rules:
 export const generateCustomRoutine = async (profileData: any, recentLogs: any[], weightUnit: string = 'kg', focusAreas: string[] = []) => {
   try {
     const sortedLogs = [...(recentLogs || [])].sort((a, b) => {
-        const tsA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
-        const tsB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
-        return tsB - tsA;
+      const tsA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
+      const tsB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
+      return tsB - tsA;
     }).slice(0, 100);
 
     const summarized = summarizeLogs(sortedLogs).slice(0, 10);
